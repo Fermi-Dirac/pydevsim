@@ -2,7 +2,7 @@ import os.path
 import csv
 from numpy import interp as interpolate
 
-from devsim import DS_DATADIR
+from pydevsim import DS_DATADIR
 
 DATADIR = os.path.join(DS_DATADIR, 'refractive_indexes')
 

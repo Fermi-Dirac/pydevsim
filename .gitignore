@@ -9,3 +9,6 @@ python_packages
 
 # Python egg metadata, regenerated from source files by setuptools.
 /*.egg-info
+
+*.idea
+pydevsim/nogit/

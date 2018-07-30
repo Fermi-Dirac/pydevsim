@@ -28,16 +28,19 @@ class Mesh(object):
 
     """
 
-    def __init__(self, name=None):
-        self.name = name or 'mesh-%s' % str(uuid.uuid4())[:8]
-        create_1d_mesh(mesh=self.name)
+    def __init__(self, name=f'mesh-{str(uuid.uuid4())[0:8]}'):
+        self.name = name
+        self.mesh = create_1d_mesh(mesh=name)
         self.contacts = []
         self.regions = []
 
     def __str__(self):
-        print("Mesh id: {}\n".format(self.name))
-        print("Contacts: {}\n".format(','.join(self.contacts)))
-        print("Regions: {}\n".format(','.join(self.regions)))
+        return "Mesh id: {}\n".format(self.name) \
+               + "Contacts: {}\n".format(','.join(self.contacts)) \
+               + "Regions: {}\n".format(','.join(self.regions))
+        # print("Mesh id: {}\n".format(self.name))
+        # print("Contacts: {}\n".format(','.join(self.contacts)))
+        # print("Regions: {}\n".format(','.join(self.regions)))
 
     def add_line(self, position, spacing, tag):
         """

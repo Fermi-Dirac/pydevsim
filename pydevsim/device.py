@@ -1,28 +1,31 @@
 import uuid
-import logging
 
-from ds import *
-from devsim import PhysicalConstants, AmbientConditions
+from pydevsim import setup_logger
+from ds import edge_from_node_model, equation, node_model,get_node_model_list,get_edge_model_list,edge_model
+from ds import contact_node_model, get_contact_current, contact_equation, set_node_values, get_contact_list, node_solution
+from ds import create_device, set_parameter, solve, write_devices, get_parameter
+from .constants import ECE_NAME, HCE_NAME, CELEC_MODEL, CHOLE_MODEL# ece_name, hce_name, celec_model, chole_model
+# from ds import *
+# namespace pollution is frowned upon. Especially top-level packing imports will cause big namespace problems later
 
-log = logging.getLogger("Device")
-
+log = setup_logger(__name__) #  logging.getLogger("Device")
 #TODO: move this to the appropiate place
 contactcharge_node="contactcharge_node"
 contactcharge_edge="contactcharge_edge"
-ece_name="ElectronContinuityEquation"
-hce_name="HoleContinuityEquation"
-celec_model = "(1e-10 + 0.5*abs(NetDoping+(NetDoping^2 + 4 * n_i^2)^(0.5)))"
-chole_model = "(1e-10 + 0.5*abs(-NetDoping+(NetDoping^2 + 4 * n_i^2)^(0.5)))"
+# ece_name="ElectronContinuityEquation"
+# hce_name="HoleContinuityEquation"
+# celec_model = "(1e-10 + 0.5*abs(NetDoping+(NetDoping^2 + 4 * n_i^2)^(0.5)))"
+# chole_model = "(1e-10 + 0.5*abs(-NetDoping+(NetDoping^2 + 4 * n_i^2)^(0.5)))"
 
 
 
 # Make sure that the model exists, as well as it's node model
-def EnsureEdgeFromNodeModelExists(device, region, nodemodel):
+def ensure_edge_from_node_model_exists(device, region, nodemodel):
     """
     Checks if the edge models exists
     """
-    if not InNodeModelList(device, region, nodemodel):
-        raise("{} must exist" % (nodemodel))
+    if nodemodel not in get_node_model_list(device=device,region=region):
+        raise ValueError(f"{nodemodel} must exist")
 
     # emlist = get_edge_model_list(device=device, region=region)
     emtest = ("{0}@n0".format(nodemodel) and "{0}@n1".format(nodemodel))
@@ -30,46 +33,50 @@ def EnsureEdgeFromNodeModelExists(device, region, nodemodel):
         log.debug("INFO: Creating ${0}@n0 and ${0}@n1".format(nodemodel))
         edge_from_node_model(device=device, region=region, node_model=nodemodel)
 
-
-def CreateElectronCurrent(device, region, mu_n):
+# CamelCase is reserved from Class objects. Methods and functions should be snake_case (PEP8)
+def create_electron_current(device, region, mu_n):
     """
-    Electron current
+    Sets up the electron current
+    :param device:
+    :param region:
+    :param mu_n: mobility
+    :return:
     """
-    EnsureEdgeFromNodeModelExists(device, region, "Potential")
-    EnsureEdgeFromNodeModelExists(device, region, "Electrons")
-    EnsureEdgeFromNodeModelExists(device, region, "Holes")
+    ensure_edge_from_node_model_exists(device, region, "Potential")
+    ensure_edge_from_node_model_exists(device, region, "Electrons")
+    ensure_edge_from_node_model_exists(device, region, "Holes")
     # Make sure the bernoulli functions exist
-    if not InEdgeModelList(device, region, "Bern01"):
-        CreateBernoulli(device, region)
+    if "Bern01" not in get_edge_model_list(device=device, region=region):
+        create_bernoulli(device, region)
     # test for requisite models here
     #  Jn = "ElectronCharge*{0}*EdgeInverseLength*V_t*(Electrons@n1*Bern10 - Electrons@n0*Bern01)".format(mu_n)
     Jn = "ElectronCharge*{0}*EdgeInverseLength*V_t*kahan3(Electrons@n1*Bern01,  Electrons@n1*vdiff,  -Electrons@n0*Bern01)".format(mu_n)
     #  Jn = "ElectronCharge*{0}*EdgeInverseLength*V_t*((Electrons@n1-Electrons@n0)*Bern01 +  Electrons@n1*vdiff)".format(mu_n)
-    CreateEdgeModel(device, region, "ElectronCurrent", Jn)
+    edge_model(device=device, region=region, name="ElectronCurrent", equation=Jn)
     for i in ("Electrons", "Potential", "Holes"):
-        CreateEdgeModelDerivatives(device, region, "ElectronCurrent", Jn, i)
+        create_edge_model_derivatives(device, region, "ElectronCurrent", Jn, i)
 
-def CreateHoleCurrent(device, region, mu_p):
+def create_hole_current(device, region, mu_p):
     """
     Hole current
     """
-    EnsureEdgeFromNodeModelExists(device, region, "Potential")
-    EnsureEdgeFromNodeModelExists(device, region, "Holes")
+    ensure_edge_from_node_model_exists(device, region, "Potential")
+    ensure_edge_from_node_model_exists(device, region, "Holes")
     # Make sure the bernoulli functions exist
-    if not InEdgeModelList(device, region, "Bern01"):
-        CreateBernoulli(device, region)
+    if "Bern01" not in get_edge_model_list(device=device, region=region):
+        create_bernoulli(device, region)
     # test for requisite models here
     #  Jp ="-ElectronCharge*{0}*EdgeInverseLength*V_t*(Holes@n1*Bern01 - Holes@n0*Bern10)".format(mu_p)
     Jp ="-ElectronCharge*{0}*EdgeInverseLength*V_t*kahan3(Holes@n1*Bern01, -Holes@n0*Bern01, -Holes@n0*vdiff)".format(mu_p)
     #  Jp ="-ElectronCharge*{0}*EdgeInverseLength*V_t*((Holes@n1 - Holes@n0)*Bern01 - Holes@n0*vdiff)".format(mu_p)
-    CreateEdgeModel(device, region, "HoleCurrent", Jp)
+    edge_model(device=device, region=region, name="HoleCurrent", equation=Jp)
     for i in ("Holes", "Potential", "Electrons"):
-        CreateEdgeModelDerivatives(device, region, "HoleCurrent", Jp, i)
+        create_edge_model_derivatives(device, region, "HoleCurrent", Jp, i)
 
 
-def CreatePE(device, region):
+def create_pe(device, region):
     pne = "-ElectronCharge*kahan3(Holes, -Electrons, NetDoping)"
-    CreateNodeModel(device, region, "PotentialNodeCharge", pne)
+    create_node_model(device, region, "PotentialNodeCharge", pne)
     CreateNodeModelDerivative(device, region, "PotentialNodeCharge", pne, "Electrons")
     CreateNodeModelDerivative(device, region, "PotentialNodeCharge", pne, "Holes")
 
@@ -80,39 +87,54 @@ def CreatePE(device, region):
         time_node_model="", variable_update="log_damp")
 
 
-def CreateBernoulli(device, region):
+def create_bernoulli(device, region):
     """
     Creates the Bernoulli function for Scharfetter Gummel
     """
     # test for requisite models here
-    EnsureEdgeFromNodeModelExists(device, region, "Potential")
+    ensure_edge_from_node_model_exists(device, region, "Potential")
     vdiffstr = "(Potential@n0 - Potential@n1)/V_t"
-    CreateEdgeModel(device, region, "vdiff", vdiffstr)
-    CreateEdgeModel(device, region, "vdiff:Potential@n0", "V_t^(-1)")
-    CreateEdgeModel(device, region, "vdiff:Potential@n1", "-vdiff:Potential@n0")
-    CreateEdgeModel(device, region, "Bern01", "B(vdiff)")
-    CreateEdgeModel(device, region, "Bern01:Potential@n0", "dBdx(vdiff) * vdiff:Potential@n0")
-    CreateEdgeModel(device, region, "Bern01:Potential@n1", "-Bern01:Potential@n0")
+    for model, expression in [("vdiff", "(Potential@n0 - Potential@n1)/V_t"),
+                              ("vdiff:Potential@n0", "V_t^(-1)"),
+                              ("vdiff:Potential@n1", "-vdiff:Potential@n0"),
+                              ("Bern01","B(vdiff)", ),
+                              ("Bern01:Potential@n0","dBdx(vdiff) * vdiff:Potential@n0"),
+                              ("Bern01:Potential@n1","-Bern01:Potential@n0")]:
+        result = edge_model(device=device, region=region, name=model, equation=expression)
+        log.debug(f"New edgemodel {device} {region} {model} -> '{result}'")#.format(d=device, r=region, m=model, re=result))
 
 
-def CreateSRH(device, region):
+def create_SRH(device, region):
+    """
+    Creates a Shockley-Reed-Hall recombination equation.
+    :param device:
+    :param region:
+    :return:
+    """
     USRH = "(Electrons*Holes - n_i^2)/(taup*(Electrons + n1) + taun*(Holes + p1))"
     Gn = "-ElectronCharge * USRH"
     Gp = "+ElectronCharge * USRH"
-    CreateNodeModel(device, region, "USRH", USRH)
-    CreateNodeModel(device, region, "ElectronGeneration", Gn)
-    CreateNodeModel(device, region, "HoleGeneration", Gp)
+    create_node_model(device, region, "USRH", USRH)
+    create_node_model(device, region, "ElectronGeneration", Gn)
+    create_node_model(device, region, "HoleGeneration", Gp)
     for i in ("Electrons", "Holes"):
         CreateNodeModelDerivative(device, region, "USRH", USRH, i)
         CreateNodeModelDerivative(device, region, "ElectronGeneration", Gn, i)
         CreateNodeModelDerivative(device, region, "HoleGeneration", Gp, i)
 
 
-def CreateECE(device, region, mu_n):
-    CreateElectronCurrent(device, region, mu_n)
+def create_electron_continuity_eq(device, region, mu_n):
+    """
+    Creates the electron continuity equation to be solved
+    :param device:
+    :param region:
+    :param mu_n: mobility of electrons
+    :return:
+    """
+    create_electron_current(device, region, mu_n)
 
     NCharge = "ElectronCharge * Electrons"
-    CreateNodeModel(device, region, "NCharge", NCharge)
+    create_node_model(device, region, "NCharge", NCharge)
     CreateNodeModelDerivative(device, region, "NCharge", NCharge, "Electrons")
 
     equation(
@@ -123,10 +145,17 @@ def CreateECE(device, region, mu_n):
     )
 
 
-def CreateHCE(device, region, mu_p):
-    CreateHoleCurrent(device, region, mu_p)
+def create_hole_continuity_eq(device, region, mu_p):
+    """
+    Creates the hole continuity equation
+    :param device:
+    :param region:
+    :param mu_p: mobility of holes
+    :return:
+    """
+    create_hole_current(device, region, mu_p)
     PCharge = "-ElectronCharge * Holes"
-    CreateNodeModel(device, region, "PCharge", PCharge)
+    create_node_model(device, region, "PCharge", PCharge)
     CreateNodeModelDerivative(device, region, "PCharge", PCharge, "Holes")
 
     equation(
@@ -139,7 +168,7 @@ def CreateHCE(device, region, mu_p):
 
 
 # TODO: Move this to the appropiate place
-def CreateNodeModel(device, region, model, expression):
+def create_node_model(device, region, model, expression):
     """
         Creates a node model
     """
@@ -152,20 +181,20 @@ def CreateNodeModel(device, region, model, expression):
     log.debug("NODEMODEL {d} {r} {m} \"{re}\"".format(d=device, r=region, m=model, re=result))
 
 
-# TODO: Move this to the appropiate place
-def InNodeModelList(device, region, model):
-    """
-    Checks to see if this node model is available on device and region
-    """
-    return model in get_node_model_list(device=device, region=region)
+# Retired
+# def InNodeModelList(device, region, model):
+#     """
+#     Checks to see if this node model is available on device and region
+#     """
+#     return model in get_node_model_list(device=device, region=region)
 
 
-# TODO: Move this to the appropiate place
-def InEdgeModelList(device, region, model):
-    """
-        Checks to see if this edge model is available on device and region
-    """
-    return model in get_edge_model_list(device=device, region=region)
+# Retired
+# def InEdgeModelList(device, region, model):
+#     """
+#         Checks to see if this edge model is available on device and region
+#     """
+#     return model in get_edge_model_list(device=device, region=region)
 
 
 # TODO: Move this to the appropiate place
@@ -183,7 +212,7 @@ def CreateNodeModelDerivative(device, region, model, expression, *args):
     Create a node model derivative
     """
     for v in args:
-        CreateNodeModel(
+        create_node_model(
             device, region,
             "{m}:{v}".format(m=model, v=v),
             "simplify(diff({e},{v}))".format(e=expression, v=v)
@@ -203,7 +232,7 @@ def CreateSiliconPotentialOnly(device, region):
     """
         Creates the physical models for a Silicon region
     """
-    if not InNodeModelList(device, region, "Potential"):
+    if not "Potential" in get_node_model_list(device=device, region=region):
         log("Creating Node Solution Potential")
         CreateSolution(device, region, "Potential")
     # require NetDoping
@@ -214,7 +243,7 @@ def CreateSiliconPotentialOnly(device, region):
         ("PotentialIntrinsicCharge", "-ElectronCharge * IntrinsicCharge")
     )
     for name, eq in intrinsics:
-        CreateNodeModel(device, region, name, eq)
+        create_node_model(device, region, name, eq)
         CreateNodeModelDerivative(device, region, name, eq, "Potential")
 
     # TODO: Edge Average Model
@@ -224,7 +253,7 @@ def CreateSiliconPotentialOnly(device, region):
     )
     for name, eq in electrics:
         CreateEdgeModel(device, region, name, eq)
-        CreateEdgeModelDerivatives(device, region, name, eq, "Potential")
+        create_edge_model_derivatives(device, region, name, eq, "Potential")
 
     equation(
         device=device, region=region,
@@ -243,21 +272,21 @@ def CreateSiliconPotentialOnlyContact(device, region, contact, is_circuit=False)
     """
     # Means of determining contact charge
     # Same for all contacts
-    if not InNodeModelList(device, region, "contactcharge_node"):
-        CreateNodeModel(device, region, "contactcharge_node", "ElectronCharge*IntrinsicCharge")
+    if "contactcharge_node" not in get_node_model_list(device=device, region=region):
+        create_node_model(device, region, "contactcharge_node", "ElectronCharge*IntrinsicCharge")
     # TODO: This is the same as D-Field
-    if not InEdgeModelList(device, region, "contactcharge_edge"):
+    if "contactcharge_edge" not in get_edge_model_list(device=device, region=region):
         CreateEdgeModel(device, region, "contactcharge_edge", "Permittivity*ElectricField")
-        CreateEdgeModelDerivatives(device, region, "contactcharge_edge", "Permittivity*ElectricField", "Potential")
+        create_edge_model_derivatives(device, region, "contactcharge_edge", "Permittivity*ElectricField", "Potential")
 
 
 # TODO: Move this to the appropiate place
 def CreateSiliconDriftDiffusion(device, region, mu_n="mu_n", mu_p="mu_p"):
-    CreatePE(device, region)
-    CreateBernoulli(device, region)
-    CreateSRH(device, region)
-    CreateECE(device, region, mu_n)
-    CreateHCE(device, region, mu_p)
+    create_pe(device, region)
+    create_bernoulli(device, region)
+    create_SRH(device, region)
+    create_electron_continuity_eq(device, region, mu_n)
+    create_hole_continuity_eq(device, region, mu_p)
 
 
 # TODO: Move this to the appropiate place
@@ -266,8 +295,8 @@ def CreateSiliconDriftDiffusionAtContact(device, region, contact, is_circuit=Fal
         Restrict electrons and holes to their equilibrium values
         Integrates current into circuit
     """
-    contact_electrons_model = "Electrons - ifelse(NetDoping > 0, {0}, n_i^2/{1})".format(celec_model, chole_model)
-    contact_holes_model = "Holes - ifelse(NetDoping < 0, +{1}, +n_i^2/{0})".format(celec_model, chole_model)
+    contact_electrons_model = "Electrons - ifelse(NetDoping > 0, {0}, n_i^2/{1})".format(CELEC_MODEL, CHOLE_MODEL)
+    contact_holes_model = "Holes - ifelse(NetDoping < 0, +{1}, +n_i^2/{0})".format(CELEC_MODEL, CHOLE_MODEL)
     contact_electrons_name = "{0}nodeelectrons".format(contact)
     contact_holes_name = "{0}nodeholes".format(contact)
 
@@ -319,24 +348,29 @@ def CreateSiliconDriftDiffusionAtContact(device, region, contact, is_circuit=Fal
 
 
 # TODO: Move this to the appropiate place
-def CreateEdgeModelDerivatives(device, region, model, expression, variable):
+def create_edge_model_derivatives(device, region, model, expression, variable):
     """
     Creates edge model derivatives
     """
-    CreateEdgeModel(
-        device, region,
-        "{m}:{v}@n0".format(m=model, v=variable),
-        "simplify(diff({e}, {v}@n0))".format(e=expression, v=variable)
-    )
-    CreateEdgeModel(
-        device, region,
-        "{m}:{v}@n1".format(m=model, v=variable),
-        "simplify(diff({e}, {v}@n1))".format(e=expression, v=variable)
-    )
+    for num in ['n0', 'n1']:
+        edge_model(device=device,
+                   region=region,
+                   name=f"{model}:{variable}@{num}",
+                   equation = f"simplify(diff({expression}, {variable}@{num}))")
+    # CreateEdgeModel(
+    #     device, region,
+    #     "{m}:{v}@n0".format(m=model, v=variable),
+    #     "simplify(diff({e}, {v}@n0))".format(e=expression, v=variable)
+    # )
+    # CreateEdgeModel(
+    #     device, region,
+    #     "{m}:{v}@n1".format(m=model, v=variable),
+    #     "simplify(diff({e}, {v}@n1))".format(e=expression, v=variable)
+    # )
 
 
 # TODO: Move this to the appropiate place
-def DriftDiffusionInitialSolution(device, region, circuit_contacts=None):
+def drift_diffusion_initial_solution(device, region, circuit_contacts=None):
     # drift diffusion solution variables
     CreateSolution(device, region, "Electrons")
     CreateSolution(device, region, "Holes")
@@ -367,13 +401,13 @@ def CreateSolution(device, region, name):
 class Device(object):
     """docstring for Device"""
 
-    _models = None
+    __models = None
 
     def __init__(self, name=None, mesh=None):
         self.name = name or 'device-%s' % str(uuid.uuid4())[:8]
         self.mesh = mesh
         create_device(mesh=self.mesh.name, device=self.name)
-        self._models = []
+        self._models=[]
 
     def _contact_bias_name(self, contact):
         return "{0}_bias".format(contact)
@@ -425,8 +459,8 @@ class Device(object):
         else:
             solve(*args, **kwargs)
 
-        for mdl in self._models:
-            mdl.solve(*args, **kwargs)
+        for model in self.__models:
+            model.solve(*args, **kwargs)
 
     def initial_solution(self):
         self.setup_context()
@@ -439,8 +473,8 @@ class Device(object):
             CreateSiliconPotentialOnly(self.name, region)
 
             # Set up the contacts applying a bias
-            # TODO: Try to use self.contacts instead it is more correct for
-            # the bias to be 0, and it looks like there are side effects
+            # TODO: Try to use self.contacts instead
+            # it is more correct for the bias to be 0, and it looks like there is side effects
 
             for c in self.mesh.contacts:
                 set_parameter(device=self.name, name=self._contact_bias_name(c), value=0.0)
@@ -482,18 +516,25 @@ class Device(object):
             for c in self.mesh.contacts:
                 CreateSiliconDriftDiffusionAtContact(self.name, region.name, c)
 
-    def setup_model(self, model):
-        self._models.append(model)
-
+    # TODO: This thing should be set up by the material
     def setup_context(self):
         """
-            Initialize the context for the simulation.
+            Initialize the context for the equations. Basically sets some variables.
             Region is an instance of the mesh.Region class
         """
+        # Region context
+        from pydevsim.constants import T, K, Q
         for region in self.mesh.regions:
-            PhysicalConstants.set_parameters_for(self.name, region.name)
-            AmbientConditions.set_parameters_for(self.name, region.name)
-            region.material.set_parameters_for(self.name, region.name)
+            for n, v in region.material.parameters.items():
+                set_parameter(device=self.name, region=region.name, name=n, value=v)
+            # General
+            set_parameter(device=self.name, region=region.name, name="ElectronCharge", value=Q)
+            set_parameter(device=self.name, region=region.name, name="T", value=T)
+            set_parameter(device=self.name, region=region.name, name="kT", value=K*T)
+            set_parameter(device=self.name, region=region.name, name="V_t", value=K*T/Q)
+
+    def setup_model(self, model):
+        self.__models.append(model)
 
     def export(self, filename, format='devsim_data'):
         write_devices(file=filename, type=format)
