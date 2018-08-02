@@ -4,11 +4,12 @@ from pydevsim import setup_logger
 from ds import edge_from_node_model, equation, node_model,get_node_model_list,get_edge_model_list,edge_model
 from ds import contact_node_model, get_contact_current, contact_equation, set_node_values, get_contact_list, node_solution
 from ds import create_device, set_parameter, solve, write_devices, get_parameter
-from .constants import ECE_NAME, HCE_NAME, CELEC_MODEL, CHOLE_MODEL# ece_name, hce_name, celec_model, chole_model
+from pydevsim import ECE_NAME, HCE_NAME, CELEC_MODEL, CHOLE_MODEL # ece_name, hce_name, celec_model, chole_model
+from .environment import Environment
 # from ds import *
 # namespace pollution is frowned upon. Especially top-level packing imports will cause big namespace problems later
 
-log = setup_logger(__name__) #  logging.getLogger("Device")
+logger = setup_logger(__name__) #  logging.getLogger("Device")
 #TODO: move this to the appropiate place
 contactcharge_node="contactcharge_node"
 contactcharge_edge="contactcharge_edge"
@@ -19,7 +20,6 @@ contactcharge_edge="contactcharge_edge"
 
 
 
-# Make sure that the model exists, as well as it's node model
 def ensure_edge_from_node_model_exists(device, region, nodemodel):
     """
     Checks if the edge models exists
@@ -30,7 +30,7 @@ def ensure_edge_from_node_model_exists(device, region, nodemodel):
     # emlist = get_edge_model_list(device=device, region=region)
     emtest = ("{0}@n0".format(nodemodel) and "{0}@n1".format(nodemodel))
     if not emtest:
-        log.debug("INFO: Creating ${0}@n0 and ${0}@n1".format(nodemodel))
+        logger.debug("INFO: Creating ${0}@n0 and ${0}@n1".format(nodemodel))
         edge_from_node_model(device=device, region=region, node_model=nodemodel)
 
 # CamelCase is reserved from Class objects. Methods and functions should be snake_case (PEP8)
@@ -101,7 +101,7 @@ def create_bernoulli(device, region):
                               ("Bern01:Potential@n0","dBdx(vdiff) * vdiff:Potential@n0"),
                               ("Bern01:Potential@n1","-Bern01:Potential@n0")]:
         result = edge_model(device=device, region=region, name=model, equation=expression)
-        log.debug(f"New edgemodel {device} {region} {model} -> '{result}'")#.format(d=device, r=region, m=model, re=result))
+        logger.debug(f"New edgemodel {device} {region} {model} -> '{result}'")#.format(d=device, r=region, m=model, re=result))
 
 
 def create_SRH(device, region):
@@ -178,7 +178,7 @@ def create_node_model(device, region, model, expression):
         name=model,
         equation=expression
     )
-    log.debug("NODEMODEL {d} {r} {m} \"{re}\"".format(d=device, r=region, m=model, re=result))
+    logger.debug("NODEMODEL {d} {r} {m} \"{re}\"".format(d=device, r=region, m=model, re=result))
 
 
 # Retired
@@ -203,7 +203,7 @@ def CreateEdgeModel(device, region, model, expression):
     Creates an edge model
     """
     result = edge_model(device=device, region=region, name=model, equation=expression)
-    log.debug("EDGEMODEL {d} {r} {m} \"{re}\"".format(d=device, r=region, m=model, re=result))
+    logger.debug("EDGEMODEL {d} {r} {m} \"{re}\"".format(d=device, r=region, m=model, re=result))
 
 
 # TODO: Move this to the appropiate place
@@ -224,7 +224,7 @@ def CreateContactNodeModel(device, contact, model, expression):
     Creates a contact node model
     """
     result = contact_node_model(device=device, contact=contact, name=model, equation=expression)
-    log.debug("CONTACTNODEMODEL {d} {c} {m} \"{re}\"".format(d=device, c=contact, m=model, re=result))
+    logger.debug("CONTACTNODEMODEL {d} {c} {m} \"{re}\"".format(d=device, c=contact, m=model, re=result))
 
 
 # TODO: Move this to the appropiate place
@@ -233,7 +233,7 @@ def CreateSiliconPotentialOnly(device, region):
         Creates the physical models for a Silicon region
     """
     if not "Potential" in get_node_model_list(device=device, region=region):
-        log("Creating Node Solution Potential")
+        logger("Creating Node Solution Potential")
         CreateSolution(device, region, "Potential")
     # require NetDoping
     intrinsics = (
@@ -403,33 +403,35 @@ class Device(object):
 
     __models = None
 
-    def __init__(self, name=None, mesh=None):
-        self.name = name or 'device-%s' % str(uuid.uuid4())[:8]
+    def __init__(self, name=f"device-{uuid.uuid4()[:8]!s}", mesh=None):
+        self.name = name
+        if mesh is None:
+            raise NotImplementedError
         self.mesh = mesh
         create_device(mesh=self.mesh.name, device=self.name)
-        self._models=[]
+        self._models = []
 
     def _contact_bias_name(self, contact):
         return "{0}_bias".format(contact)
 
-    def print_currents(self):
-        for c in self.mesh.contacts:
-            e_current = get_contact_current(
-                device=device, contact=c, equation='ElectronContinuityEquation'
-            )
-            h_current = get_contact_current(
-                device=device, contact=c, equation='HoleContinuityEquation'
-            )
-            total_current = e_current + h_current
-            voltage = get_parameter(
-                device=device,
-                name=self._contact_bias_name(contact)
-            )
-        log.info("{0}\t{1}\t{2}\t{3}\t{4}".format(contact, voltage, e_current, h_current, total_current))
+    # def print_currents(self):
+    #     for c in self.mesh.contacts:
+    #         e_current = get_contact_current(
+    #             device=device, contact=c, equation='ElectronContinuityEquation'
+    #         )
+    #         h_current = get_contact_current(
+    #             device=device, contact=c, equation='HoleContinuityEquation'
+    #         )
+    #         total_current = e_current + h_current
+    #         voltage = get_parameter(
+    #             device=device,
+    #             name=self._contact_bias_name(contact)
+    #         )
+    #     logger.info("{0}\t{1}\t{2}\t{3}\t{4}".format(contact, voltage, e_current, h_current, total_current))
 
     def create_node_model(self, region, model, expression):
         result = node_model(device=self.name, region=region, name=model, equation=expression)
-        log.debug("NODEMODEL {d} {r} {m} \"{re}\"".format(d=self.name, r=region, m=model, re=result))
+        logger.debug("NODEMODEL {d} {r} {m} \"{re}\"".format(d=self.name, r=region, m=model, re=result))
 
     def create_solution(self, region, name):
         '''
@@ -523,7 +525,7 @@ class Device(object):
             Region is an instance of the mesh.Region class
         """
         # Region context
-        from pydevsim.constants import T, K, Q
+        from pydevsim import T, K, Q
         for region in self.mesh.regions:
             for n, v in region.material.parameters.items():
                 set_parameter(device=self.name, region=region.name, name=n, value=v)
@@ -538,3 +540,17 @@ class Device(object):
 
     def export(self, filename, format='devsim_data'):
         write_devices(file=filename, type=format)
+
+class Device1D(Device):
+    def __init__(self, materials, interfaces=None, contacts=None, environment=Environment(), **kwargs):
+        super().__init__(**kwargs)
+        self.materials = materials
+        if interfaces is None:
+            interfaces = [None for _ in materials]
+            interfaces.pop() # Should be 1 less interface than the number of materials.
+        self.interfaces = interfaces
+        self.contacts = contacts
+        self.environment = environment
+
+    def sweep_iv(self):
+        raise NotImplementedError
