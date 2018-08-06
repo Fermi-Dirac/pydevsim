@@ -1,10 +1,12 @@
 import uuid
 
+import numpy as np
 from pydevsim import setup_logger
 from ds import edge_from_node_model, equation, node_model,get_node_model_list,get_edge_model_list,edge_model
 from ds import contact_node_model, get_contact_current, contact_equation, set_node_values, get_contact_list, node_solution
-from ds import create_device, set_parameter, solve, write_devices, get_parameter
+from ds import create_device, set_parameter, solve, write_devices, get_parameter, add_1d_contact, add_1d_region
 from pydevsim import ECE_NAME, HCE_NAME, CELEC_MODEL, CHOLE_MODEL # ece_name, hce_name, celec_model, chole_model
+from .mesh import Mesh1D
 from .environment import Environment
 # from ds import *
 # namespace pollution is frowned upon. Especially top-level packing imports will cause big namespace problems later
@@ -402,13 +404,14 @@ class Device(object):
     """docstring for Device"""
 
     __models = None
+    _next_id = 0
 
-    def __init__(self, name=f"device-{uuid.uuid4()[:8]!s}", mesh=None):
-        self.name = name
-        if mesh is None:
-            raise NotImplementedError
-        self.mesh = mesh
-        create_device(mesh=self.mesh.name, device=self.name)
+    def __init__(self, name=f"default_device"):
+        self.name =f"{name}_{self._next_id:d}"
+        self._next_id += 1
+        # if mesh is None:
+        #     raise NotImplementedError
+        # create_device(mesh=self.mesh.name, device=self.name)
         self._models = []
 
     def _contact_bias_name(self, contact):
@@ -541,16 +544,88 @@ class Device(object):
     def export(self, filename, format='devsim_data'):
         write_devices(file=filename, type=format)
 
+
 class Device1D(Device):
-    def __init__(self, materials, interfaces=None, contacts=None, environment=Environment(), **kwargs):
+    """
+    Simple 1D device
+
+    """
+    def __init__(self, regions, mesh=Mesh1D(), interfaces=None, contacts=None, environment=Environment(), R_series=0, **kwargs):
+        """
+        Creates a 1D device
+
+        This constructor is responsbile for:
+        Creating the mesh
+        * Adding the meshlines from the Region objects inside of regions
+        * Adding interfaces between the Regions
+        * Upading the Region objects interfaces as needed
+        * Creating the contacts as specified by giving a list of two Regions
+        :param regions: List of Region objects which create this 1D device. Order matters and is from top to bottom
+        :param interfaces: List of interfaces for this device. Does not include top and bottom contacts.
+                           Should be N-1 regions, default is no special interfaces at all
+        :param contacts: List of Tag name of the contacts for this device. Default is one at top and one at bottom
+        :param environment: Local environment of the measurement. Default is 25C, no B field, 50% humidity, STP
+        :param kwargs: Other kwargs for base class
+        """
         super().__init__(**kwargs)
-        self.materials = materials
+        self.regions = regions
+        self.mesh = mesh
         if interfaces is None:
-            interfaces = [None for _ in materials]
+            interfaces = [None for _ in regions]
             interfaces.pop() # Should be 1 less interface than the number of materials.
         self.interfaces = interfaces
+        if contacts is None:
+            contacts = self.regions[0].mesh_data[0]['tag'], self.regions[-1].mesh_data[-1]['tag']
         self.contacts = contacts
         self.environment = environment
+        for region in regions:
+            logger.debug(f"Now adding region {region.name} to the new mesh for this device")
+            for mesh_info in region.mesh_data:
+                self.mesh.add_line(**mesh_info)
+                logger.info(f"Added mesh: {mesh_info['tag']}")
+            add_1d_region(mesh=self.mesh.name, material=region.material.name, region=region.name,
+                          tag1=region.mesh_data[0]['tag'], tag2=region.mesh_data[-1]['tag'])
+        for contact in contacts:
+            logger.debug(f"Adding 1D contacts for {contact}")
+            add_1d_contact(mesh=self.mesh.name, name=contact, tag=contact, material='metal')
+            # TODO support contacts not ideal metals! Maybe make Contact an object? thats silly perhaps. Dict?
+        self.mesh.finalize()
+        logger.info(f"Creating device {self.name} associated with mesh {self.mesh.name}")
+        create_device(mesh=self.mesh.name, device=self.name)
 
-    def sweep_iv(self):
-        raise NotImplementedError
+    def sweep_iv(self, start_v=-1, stop_v=1, step_v=None, count=20):
+        if step_v is None:
+            v_sweep = np.linspace(start_v, stop_v, count)
+        else:
+            v_sweep = np.arange(start_v, stop_v, step_v)
+        current_sweeep = []
+        for bias_volt in v_sweep:
+            self.set_top_bias(bias_volt)
+            current_sweeep.append(self.get_total_current())
+
+    def set_bias(self, tag, bias_volt):
+        set_parameter(device=self.name, name=f"{tag}_bias", value=float(bias_volt))
+
+    def set_top_bias(self, bias_volt):
+        tag = self.contacts[0]
+        self.set_bias(tag, bias_volt)
+
+    def set_bottom_bias(self, bias_volt):
+        tag = self.contacts[1]
+        self.set_bias(tag, bias_volt)
+
+    @property
+    def total_current(self):
+        return self.get_total_current()
+
+    def get_total_current(self):
+        """
+        Gets the total current, electron+hole from the two contacts.
+        :return:
+        """
+        current = 0
+        for contact in self.contacts:
+            e_current = get_contact_current(device=self.name, contact=contact, equation=ECE_NAME)
+            h_current = get_contact_current(device=self.name, contact=contact, equation=HCE_NAME)
+            current += e_current + h_current
+        return current

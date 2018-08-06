@@ -1,4 +1,11 @@
+"""
+This module holds classes that interact with the material database in devsim
+
+Each material is associated with various regions.
+When material objects are created they can have different default values.
+"""
 from enum import Enum
+from pydevsim import eps_0
 
 
 class Material(object):
@@ -6,8 +13,7 @@ class Material(object):
     This is the base class for materials and regions
     This hosts common methods and attributes for other materials
     """
-    def __init__(self, thickness, name='default'):
-        self.thickness = thickness
+    def __init__(self, name='default'):
         self.name = name
 
     def __repr__(self):
@@ -15,20 +21,21 @@ class Material(object):
 
 class Semiconductor(Material):
     """
-    Class for solid-state simple semicondcutors and alloys
+    Class for solid-state simple semiconductors and alloys
 
     Current version is very 1D, and is based off of AFORS style
     """
-    def __init__(self, thickness, dielectric_const=11.9,
+    def __init__(self, dielectric_const=11.9,
                  work_function=4.05, band_gap=1.124,
                  Ncond=3E19, Nval=3E19,
                  mobility_n=1107, mobility_p=424.6,
-                 Na=0, Nd=0,
+                 Nacceptors=0, Ndonors=0,
                  vel_electron=1E7, vel_holes=1E7,
                  band_to_band_tunnel_rate=0,
                  auger_e=0, auger_h=0,
                  defect_list=None,**kwargs):
-        super().__init__(thickness, **kwargs)
+        super().__init__(name='silicon')
+        # TODO this smells like a good time to call set_attr() but it makes me nervous. I kinda like the explicit list..
         self.dielectric_const = dielectric_const
         self.work_function = work_function
         self.band_gap = band_gap
@@ -36,8 +43,11 @@ class Semiconductor(Material):
         self.Nval = Nval
         self.mobility_n = mobility_n
         self.mobility_p = mobility_p
-        self.Na = Na
-        self.Nd = Nd
+        self.Na = Nacceptors
+        # Grab some common aliases
+        if 'nd' in kwargs:
+            Ndonors = kwargs['nd']
+        self.Nd = Ndonors
         self.velocity_e = vel_electron
         self.velocity_h = vel_holes
         self.bbr = band_to_band_tunnel_rate
@@ -52,8 +62,8 @@ class Silicon(Semiconductor):
     """
     Simple class for textbook Silicon material
     """
-    def __init__(self, thickness, **kwargs):
-        super().__init__(thickness, **kwargs)
+    def __init__(self, **kwargs):
+        super().__init__(name='Si', **kwargs)
 
 class Defect(object):
     """
@@ -105,6 +115,7 @@ class OldSilicon(Material):
 
         s = Silicon(T=327, taun=1e16, taup=1.44e-6)
         """
+        super().__init__(**kwargs)
         self.parameters = self.__defaults.copy()
         self.parameters.update(kwargs)
 

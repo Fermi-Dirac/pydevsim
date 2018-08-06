@@ -4,18 +4,20 @@ Mesh objects and routines
 
 import uuid
 import enum
-from ds import *
+from ds import add_1d_region, add_1d_mesh_line, add_1d_interface, add_1d_contact, create_1d_mesh, finalize_mesh
+from .region import Region, Region1D
+from pydevsim import setup_logger
+logger = setup_logger(__name__)
 
-
-class Region(object):
-    """A Region within a Semiconductor"""
-    def __init__(self, name, material):
-        super(Region, self).__init__()
-        self.name = name
-        self.material = material
-
-    def __str__(self):
-        return self.name
+# class Region(object):
+#     """A Region within a Semiconductor"""
+#     def __init__(self, name, material):
+#         super(Region, self).__init__()
+#         self.name = name
+#         self.material = material
+#
+#     def __str__(self):
+#         return self.name
 
 
 class Mesh(object):
@@ -27,12 +29,15 @@ class Mesh(object):
            used instead
 
     """
+    _next_id = 0
 
-    def __init__(self, name=f'mesh-{str(uuid.uuid4())[0:8]}'):
-        self.name = name
-        self.mesh = create_1d_mesh(mesh=name)
+    def __init__(self, name='Default_mesh', scale=1E-6):
+        logger.debug(f"Creating mesh {name}")
+        self.name = f"{name}_{self._next_id:d}"
+        self._next_id += 1
         self.contacts = []
         self.regions = []
+        self.scale = scale
 
     def __str__(self):
         return "Mesh id: {}\n".format(self.name) \
@@ -43,12 +48,45 @@ class Mesh(object):
         # print("Regions: {}\n".format(','.join(self.regions)))
 
     def add_line(self, position, spacing, tag):
+        raise NotImplementedError
+
+
+    def add_contact(self, name, tag, material):
+        """
+        Add a contact to this mesh
+
+        name: a name for this contact
+        tag: a tag for ...?
+        material: The material for the contact ...???
+        """
+        add_1d_contact(mesh=self.name, name=name, tag=tag, material=str(material))
+        self.contacts.append(name)
+
+    def add_region(self, name, material, tag1, tag2):
+        """
+        """
+        raise NotImplementedError
+
+    def finalize(self):
+        """
+        Last step before simulation. If you use this with a Device, it will
+        call this for you.
+        """
+        logger.info(f"Finalizing mesh for {self.name}")
+        finalize_mesh(mesh=self.name)
+
+class Mesh1D(Mesh):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.mesh = create_1d_mesh(mesh=self.name)
+
+    def add_line(self, position=0, spacing=0.1, tag=f"default_line"):
         """
         Add a line to the mesh
 
         position: Position
-        spacing: Positive spacing
-        tag: a tag for ...?
+        spacing: Positive spacing at this location
+        tag: a tag for matching contacts
 
         The spacing option is *positive spacing* to the next line that you have
         added.
@@ -71,24 +109,12 @@ class Mesh(object):
         important. If you had tight spacing everywhere, it could make the
         simulation much slower.
         """
-        scale = 1e-6
         add_1d_mesh_line(
             mesh=self.name,
-            pos=position * scale,
-            ps=spacing * scale,
+            pos=position * self.scale,
+            ps=spacing * self.scale,
             tag=tag
         )
-
-    def add_contact(self, name, tag, material):
-        """
-        Add a contact to this mesh
-
-        name: a name for this contact
-        tag: a tag for ...?
-        material: The material for the contact ...???
-        """
-        add_1d_contact(mesh=self.name, name=name, tag=tag, material=str(material))
-        self.contacts.append(name)
 
     def add_region(self, name, material, tag1, tag2):
         """
@@ -112,15 +138,6 @@ class Mesh(object):
         """
         # Use the material class name as material name parameter to add_1d_region?
         _mat = isinstance(material, enum.Enum) and material.__name__ or material.__class__.__name__
-        add_1d_region(
-            mesh=self.name, material=str(_mat), region=name, tag1=tag1, tag2=tag2
-        )
+        add_1d_region(mesh=self.name, material=str(_mat), region=name, tag1=tag1, tag2=tag2)
         # Maybe add name, material as tuple?
-        self.regions.append(Region(name, material))
-
-    def finalize(self):
-        """
-        Last step before simulation. If you use this with a Device, it will
-        call this for you.
-        """
-        finalize_mesh(mesh=self.name)
+        self.regions.append(Region1D(name, material))
