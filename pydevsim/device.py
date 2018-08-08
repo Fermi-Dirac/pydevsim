@@ -5,7 +5,8 @@ from pydevsim import setup_logger
 from ds import edge_from_node_model, equation, node_model,get_node_model_list,get_edge_model_list,edge_model
 from ds import contact_node_model, get_contact_current, contact_equation, set_node_values, get_contact_list, node_solution
 from ds import create_device, set_parameter, solve, write_devices, get_parameter, add_1d_contact, add_1d_region
-from pydevsim import ECE_NAME, HCE_NAME, CELEC_MODEL, CHOLE_MODEL # ece_name, hce_name, celec_model, chole_model
+from ds import print_node_values, print_edge_values, print_element_values
+from pydevsim import ECE_NAME, HCE_NAME, CELEC_MODEL, CHOLE_MODEL, q, T, kb, V_t, eps_0 # ece_name, hce_name, celec_model, chole_model
 from .mesh import Mesh1D
 from .environment import Environment
 # from ds import *
@@ -20,7 +21,18 @@ contactcharge_edge="contactcharge_edge"
 # celec_model = "(1e-10 + 0.5*abs(NetDoping+(NetDoping^2 + 4 * n_i^2)^(0.5)))"
 # chole_model = "(1e-10 + 0.5*abs(-NetDoping+(NetDoping^2 + 4 * n_i^2)^(0.5)))"
 
+# Legacy functions
+def InNodeModelList(device, region, model):
+  '''
+    Checks to see if this node model is available on device and region
+  '''
+  return model in get_node_model_list(device=device, region=region)
 
+def InEdgeModelList(device, region, model):
+  '''
+    Checks to see if this edge model is available on device and region
+  '''
+  return model in get_edge_model_list(device=device, region=region)
 
 def ensure_edge_from_node_model_exists(device, region, nodemodel):
     """
@@ -235,7 +247,7 @@ def CreateSiliconPotentialOnly(device, region):
         Creates the physical models for a Silicon region
     """
     if not "Potential" in get_node_model_list(device=device, region=region):
-        logger("Creating Node Solution Potential")
+        logger.debug("Creating Node Solution Potential")
         CreateSolution(device, region, "Potential")
     # require NetDoping
     intrinsics = (
@@ -406,8 +418,9 @@ class Device(object):
     __models = None
     _next_id = 0
 
-    def __init__(self, name=f"default_device"):
+    def __init__(self, regions, name=f"default_device"):
         self.name =f"{name}_{self._next_id:d}"
+        self.regions = regions
         self._next_id += 1
         # if mesh is None:
         #     raise NotImplementedError
@@ -447,25 +460,11 @@ class Device(object):
     def solve(self, *args, **kwargs):
         if not args and not kwargs:
             self.initial_solution()
-        elif kwargs.get('type', '') == 'ramp':
-            kwargs['type'] = 'dc'
-            start = kwargs.pop('start')
-            stop = kwargs.pop('stop')
-            step = kwargs.pop('step')
-            contact = kwargs.pop('contact')
-            for v in range(start, stop, step):
-                set_parameter(
-                    device=self.name,
-                    name=self._contact_bias_name(contact),
-                    value=v
-                )
-                solve(**kwargs)
-                self.print_currents()
         else:
             solve(*args, **kwargs)
 
-        for model in self.__models:
-            model.solve(*args, **kwargs)
+        # for model in self.__models:
+        #     model.solve(*args, **kwargs)
 
     def initial_solution(self):
         self.setup_context()
@@ -491,7 +490,7 @@ class Device(object):
         Creates solution variables
         As well as their entries on each edge
         """
-        for region in self.mesh.regions:
+        for region in self.regions:
             node_solution(name=name, device=self.name, region=region)
             edge_from_node_model(node_model=name, device=self.name, region=region)
 
@@ -501,7 +500,7 @@ class Device(object):
         self.create_solution_variable("Electrons")
         self.create_solution_variable("Holes")
 
-        for region in self.mesh.regions:
+        for region in self.regions:
             # Create initial guess from DC only solution
             set_node_values(
                 device=self.name,
@@ -518,7 +517,7 @@ class Device(object):
 
             # Set up equations
             CreateSiliconDriftDiffusion(self.name, region.name)
-            for c in self.mesh.contacts:
+            for c in self.contacts:
                 CreateSiliconDriftDiffusionAtContact(self.name, region.name, c)
 
     # TODO: This thing should be set up by the material
@@ -528,15 +527,16 @@ class Device(object):
             Region is an instance of the mesh.Region class
         """
         # Region context
-        from pydevsim import T, K, Q
+        from pydevsim import T, kb, q
         for region in self.mesh.regions:
             for n, v in region.material.parameters.items():
                 set_parameter(device=self.name, region=region.name, name=n, value=v)
             # General
-            set_parameter(device=self.name, region=region.name, name="ElectronCharge", value=Q)
+            set_parameter(device=self.name, region=region.name, name="ElectronCharge", value=q)
+            set_parameter(device=self.name, region=region.name, name="q", value=q)
             set_parameter(device=self.name, region=region.name, name="T", value=T)
-            set_parameter(device=self.name, region=region.name, name="kT", value=K*T)
-            set_parameter(device=self.name, region=region.name, name="V_t", value=K*T/Q)
+            set_parameter(device=self.name, region=region.name, name="kT", value=kb*T)
+            set_parameter(device=self.name, region=region.name, name="V_t", value=kb*T/q)
 
     def setup_model(self, model):
         self.__models.append(model)
@@ -567,8 +567,7 @@ class Device1D(Device):
         :param environment: Local environment of the measurement. Default is 25C, no B field, 50% humidity, STP
         :param kwargs: Other kwargs for base class
         """
-        super().__init__(**kwargs)
-        self.regions = regions
+        super().__init__(regions, **kwargs)
         self.mesh = mesh
         if interfaces is None:
             interfaces = [None for _ in regions]
@@ -578,6 +577,7 @@ class Device1D(Device):
             contacts = self.regions[0].mesh_data[0]['tag'], self.regions[-1].mesh_data[-1]['tag']
         self.contacts = contacts
         self.environment = environment
+        # Setup our regions
         for region in regions:
             logger.debug(f"Now adding region {region.name} to the new mesh for this device")
             for mesh_info in region.mesh_data:
@@ -592,6 +592,7 @@ class Device1D(Device):
         self.mesh.finalize()
         logger.info(f"Creating device {self.name} associated with mesh {self.mesh.name}")
         create_device(mesh=self.mesh.name, device=self.name)
+        self.setup_drift_diffusion()
 
     def sweep_iv(self, start_v=-1, stop_v=1, step_v=None, count=20):
         if step_v is None:
@@ -600,15 +601,21 @@ class Device1D(Device):
             v_sweep = np.arange(start_v, stop_v, step_v)
         current_sweeep = []
         for bias_volt in v_sweep:
-            self.set_top_bias(bias_volt)
-            current_sweeep.append(self.get_total_current())
+            self.top_bias = bias_volt
+            self.solve(type='dc', absolute_error=1e9, relative_error=1e-10, maximum_iterations=50)
+            current_sweeep.append(self.total_current)
+        return v_sweep, current_sweeep
 
     def set_bias(self, tag, bias_volt):
         set_parameter(device=self.name, name=f"{tag}_bias", value=float(bias_volt))
 
-    def set_top_bias(self, bias_volt):
-        tag = self.contacts[0]
-        self.set_bias(tag, bias_volt)
+    @property
+    def top_bias(self):
+        return get_parameter(device=self.name, name=f"{self.contacts[0]}_bias")
+
+    @top_bias.setter
+    def top_bias(self, bias_volt):
+        self.set_bias(self.contacts[0], bias_volt)
 
     def set_bottom_bias(self, bias_volt):
         tag = self.contacts[1]
@@ -616,16 +623,179 @@ class Device1D(Device):
 
     @property
     def total_current(self):
-        return self.get_total_current()
-
-    def get_total_current(self):
-        """
-        Gets the total current, electron+hole from the two contacts.
-        :return:
-        """
         current = 0
         for contact in self.contacts:
             e_current = get_contact_current(device=self.name, contact=contact, equation=ECE_NAME)
             h_current = get_contact_current(device=self.name, contact=contact, equation=HCE_NAME)
             current += e_current + h_current
         return current
+
+    def setup_drift_diffusion(self, dielectric_const=11.9, intrinsic_carriers=1E10,
+                 work_function=4.05, band_gap=1.124,
+                 Ncond=3E19, Nval=3E19,
+                 mobility_n=1107, mobility_p=424.6,
+                 Nacceptors=0, Ndonors=0):
+        """
+        Sets up equations for a drift-diffusion style of dc current transport.
+
+        kwargs here are device-level parameters, imbuing all regions with these properties
+        If a specific region or material is to have a different set of parameters, they can be set through the
+        Region constructor.
+        :param dielectric_const:
+        :param intrinsic_carriers:
+        :param work_function:
+        :param band_gap:
+        :param Ncond:
+        :param Nval:
+        :param mobility_n:
+        :param mobility_p:
+        :param Nacceptors:
+        :param Ndonors:
+        :return:
+        """
+        # Begin legacy copy-paste job
+        # Set silicon parameters
+        device = self.name
+        region = self.regions[0].name
+        eps_si = dielectric_const
+        n_i = 1E10
+        k = kb
+        mu_n = mobility_n
+        mu_p = mobility_p
+        set_parameter(device=device, region=region, name="Permittivity", value=eps_si * eps_0)
+        set_parameter(device=device, region=region, name="ElectronCharge", value=q)
+        set_parameter(device=device, region=region, name="n_i", value=n_i)
+        set_parameter(device=device, region=region, name="T", value=T)
+        set_parameter(device=device, region=region, name="kT", value=k * T)
+        set_parameter(device=device, region=region, name="V_t", value=k * T / q)
+        set_parameter(device=device, region=region, name="mu_n", value=mu_n)
+        set_parameter(device=device, region=region, name="mu_p", value=mu_p)
+        # default SRH parameters
+        set_parameter(device=device, region=region, name="n1", value=n_i)
+        set_parameter(device=device, region=region, name="p1", value=n_i)
+        set_parameter(device=device, region=region, name="taun", value=1e-5)
+        set_parameter(device=device, region=region, name="taup", value=1e-5)
+        # CreateNodeModel 3 times
+        for name, value in [('Acceptors', "1.0e18*step(0.5e-5-x)"),
+                            ('Donors',  "1.0e18*step(x-0.5e-5)"),
+                            ('NetDoping', "Donors-Acceptors")]:
+            result = node_model(device=device, region=region, name=name, equation=value)
+            logger.debug(f"NODEMODEL {device} {region} {name} '{result}'")
+        print_node_values(device=device, region=region, name="NetDoping")
+        model_name = "Potential"
+        node_solution(name=model_name, device=device, region=region)
+        edge_from_node_model(node_model=model_name, device=device, region=region)
+        # Create silicon potentialOnly
+        if model_name not in get_node_model_list(device=device, region=region):
+            logger.debug("Creating Node Solution Potential")
+            node_solution(device=device, region=region, name=model_name)
+            edge_from_node_model(node_model=model_name, device=device, region=region)
+
+        # require NetDoping
+        for name, eq in (
+                ("IntrinsicElectrons", "n_i*exp(Potential/V_t)"),
+                ("IntrinsicHoles", "n_i^2/IntrinsicElectrons"),
+                ("IntrinsicCharge", "kahan3(IntrinsicHoles, -IntrinsicElectrons, NetDoping)"),
+                ("PotentialIntrinsicCharge", "-ElectronCharge * IntrinsicCharge")
+        ):
+            node_model(device=device, region=region, name=name, equation=eq)
+            node_model(device=device, region=region, name=f"{name}:{model_name}",equation=f"simplify(diff({eq},{model_name}))")
+            # CreateNodeModelDerivative(device, region, name, eq, model_name)
+
+        ### TODO: Edge Average Model
+        for name, eq in (
+                ("ElectricField", "(Potential@n0-Potential@n1)*EdgeInverseLength"),
+                ("PotentialEdgeFlux", "Permittivity * ElectricField")
+        ):
+            edge_model(device=device, region=region, name=name, equation=eq)
+            edge_model(device=device, region=region, name=f"{name}:{model_name}@n0", equation=f"simplify(diff({eq}, {model_name}@n0))")
+            edge_model(device=device, region=region, name=f"{name}:{model_name}@n1", equation=f"simplify(diff({eq}, {model_name}@n1))")
+
+        equation(device=device, region=region, name="PotentialEquation", variable_name=model_name,
+                 node_model="PotentialIntrinsicCharge", edge_model="PotentialEdgeFlux", variable_update="log_damp")
+
+        # Set up the contacts applying a bias
+        is_circuit = False
+        for contact_name in get_contact_list(device=device):
+            set_parameter(device=device, name=f"{contact_name}_bias", value=0.0)
+            # CreateSiliconPotentialOnlyContact(device, region, contact_name)
+            # Start
+            # Means of determining contact charge
+            # Same for all contacts
+            if not InNodeModelList(device, region, "contactcharge_node"):
+                create_node_model(device, region, "contactcharge_node", "ElectronCharge*IntrinsicCharge")
+            #### TODO: This is the same as D-Field
+            if not InEdgeModelList(device, region, "contactcharge_edge"):
+                CreateEdgeModel(device, region, "contactcharge_edge", "Permittivity*ElectricField")
+                create_edge_model_derivatives(device, region, "contactcharge_edge", "Permittivity*ElectricField",
+                                           "Potential")
+                #  set_parameter(device=device, region=region, name=GetContactBiasName(contact), value=0.0)
+            contact_bias_name = f"{contact_name}_bias"
+            contact_model_name = f"{contact_name}nodemodel"
+            contact_model = f"Potential -{contact_bias_name} + ifelse(NetDoping > 0, -V_t*log({CELEC_MODEL!s}/n_i), V_t*log({CHOLE_MODEL!s}/n_i))"\
+
+            CreateContactNodeModel(device, contact_name, contact_model_name, contact_model)
+            # Simplify it too complicated
+            CreateContactNodeModel(device, contact_name, "{0}:{1}".format(contact_model_name, "Potential"), "1")
+            if is_circuit:
+                CreateContactNodeModel(device, contact_name,
+                                       "{0}:{1}".format(contact_model_name, contact_bias_name), "-1")
+
+            if is_circuit:
+                contact_equation(device=device, contact=contact_name, name="PotentialEquation", variable_name="Potential",
+                                 node_model=contact_model_name, edge_model="",
+                                 node_charge_model="contactcharge_node", edge_charge_model="contactcharge_edge",
+                                 node_current_model="", edge_current_model="", circuit_node=contact_bias_name)
+            else:
+                contact_equation(device=device, contact=contact_name, name="PotentialEquation", variable_name="Potential",
+                                 node_model=contact_model_name, edge_model="",
+                                 node_charge_model="contactcharge_node", edge_charge_model="contactcharge_edge",
+                                 node_current_model="", edge_current_model="")
+            # Biggie
+
+        # Initial DC solution
+        solve(type="dc", absolute_error=1.0, relative_error=1e-10, maximum_iterations=30)
+
+        drift_diffusion_initial_solution(device, region)
+
+        solve(type="dc", absolute_error=1e10, relative_error=1e-10, maximum_iterations=30)
+
+
+        # End legacy copy-paste job
+        # material params needed
+        # dd_kwargs = locals()
+        # dd_kwargs.pop('self')
+        # for name, value in dd_kwargs.items():
+        #     logger.debug(f"Setting ds parameter {name!s} to {value:.3g} on device {self.name}")
+        #     set_parameter(device=self.name, name=name, value=value)
+        # for region in self.regions:
+        #     self.create_solution(region.name, 'Potential')
+        #     CreateSiliconPotentialOnly(self.name, region.name)
+        #     create_electron_continuity_eq(self.name, region.name, mu_n=mobility_n)
+        #     create_hole_continuity_eq(self.name, region.name, mu_p=mobility_p)
+        #     create_electron_current(self.name, region.name)
+        #     create_hole_current(self.name, region.name)
+        # for contact in self.contacts:
+        #     self.set_bias(contact, 0)
+        #     CreateSiliconPotentialOnlyContact(self.name, region.name, contact)
+        #
+        #     # create solicon potential only?
+        #     # setup contacts
+        #
+        # # Continuity equation for e and h
+        #
+        # # comment reserved devsim words
+        # # Intrinsic and electric terms
+        # # set app parameters for this region and material
+        # # 'Potential?'
+        # pass
+
+    def setup_SRH_recombination(self):
+        return NotImplementedError
+
+    def setup_band_to_band_tunneling(self):
+        return NotImplementedError
+
+    def setup_model(self, model_name, **kwargs):
+        if model_name.casefold() in ['dd', 'drift-diffusion', 'drift_diffusion']:
+            self.setup_drift_diffusion(**kwargs)

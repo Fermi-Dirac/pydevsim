@@ -58,6 +58,7 @@ class Semiconductor(Material):
         self.defect_list = defect_list
 
 
+
 class Silicon(Semiconductor):
     """
     Simple class for textbook Silicon material

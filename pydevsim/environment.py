@@ -1,5 +1,7 @@
+from ds import set_parameter
 from pydevsim import setup_logger
 logger = setup_logger(__name__)
+
 
 class Environment(object):
     """
@@ -14,3 +16,5 @@ class Environment(object):
         self.temp = temp
         self.B_field = B_field
         self.light = light
+        # for name, value in locals().items():
+        #     set_parameter(name=name, value=value)

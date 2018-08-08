@@ -6,6 +6,7 @@ These are associated with a mesh object which contains details on the simulation
 Each region is also bounded by Interfaces
 """
 from pydevsim import setup_logger
+from ds import set_parameter
 from .material import Silicon
 
 
@@ -24,7 +25,7 @@ class Region(object):
     def __init__(self, name='default', material=None):
         self.id = self._next_id
         self._next_id += 1
-        self.name = f"{name},id_{self.id:d}"
+        self.name = f"{name}_id_{self.id:d}"
         if material is None:
             logger.warning(f"No material specified for region {name}, using Silicon")
             material = Silicon()
@@ -63,4 +64,6 @@ class Region1D(Region):
                 logger.error("Tried to pass tuple list as mesh_data instead of dictionary. Recasting")
                 mesh_data = [{'position': minfo[0], 'spacing':minfo[1], 'tag':minfo[2]} for minfo in mesh_data]
         self.mesh_data = mesh_data
+
+
 

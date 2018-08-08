@@ -3,18 +3,28 @@ from os.path import dirname, abspath
 from ds import set_parameter
 import logging
 
-DS_DATADIR = abspath(joinpath(dirname(__file__), 'data'))
-
-# Permitivity constants
+# Fundamental Constants
+# Permitivity of free space
 eps_0  = 8.854187817e-14 # F/cm^2
 # The electron charge quanta
-Q      = 1.60217662e-19 # Couloumbs
+q      = 1.60217662e-19 # Couloumbs
 # Boltzmann's constant
-K      = 1.3806503e-23 # J/K
+kb      = 1.3806503e-23 # J/K
 # Planck's constant
-PLANCK_H = 6.626E-34 #J*s
+planck_h = 6.626E-34 #J*s
 # Default Ambient temperature
 T      = 300 # K
+# Thermal energy
+kT = kb*T
+# Thermal voltage
+V_t = kb*T/q
+# Set them globally
+for name in ['eps_0', 'q', 'kb', 'planck_h', 'T', 'kT', 'V_t']:
+    value = eval(name)
+    print(f"Now setting global variable {name} to {value:.3g}")
+    set_parameter(name=name, value=value)
+
+DS_DATADIR = abspath(joinpath(dirname(__file__), 'data'))
 
 ECE_NAME = "ElectronContinuityEquation"
 HCE_NAME = "HoleContinuityEquation"

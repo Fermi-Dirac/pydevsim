@@ -12,7 +12,7 @@ measurement = resistor.sweep_iv()
 
 # or do it manually:
 for volt in volts:
-    resistor.voltage=volt
+    resistor.set=volt
     resistor.solve()
     curr.append(resistor.total_current)
 
