@@ -1,5 +1,6 @@
-from pydevsim import materials, device, environment, mesh
 from matplotlib import pyplot as plt
+from pydevsim import materials, device, environment
+
 # TDD case for a resistor made of silicon given a particular doping profile
 
 p_Si = materials.Silicon(thickness=10, nd=1E15)  # Si constructor handles everything we want by default. required parameter is thickness
