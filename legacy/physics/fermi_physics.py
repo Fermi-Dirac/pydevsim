@@ -16,7 +16,7 @@
 constants = (
 ("global", "Permittivity",    8.85418782e-14, "F/cm^2", "Permittivity of Free Space"),
 ("SiO2",   "epsr",            3.9,            "",       "Relative Permittivity"),
-("global", "ElectronCharge",  1.60217646e-19, "coul",   "Charge of electrons")
+("global", "ElectronCharge",  1.60217646e-19, "coul",   "Charge of electrons"),
 ("Si",     "epsr",           11.7,            "",       "Relative Permittivity"),
 ("Si",     "NC300",           3.23e19,        "#/cm^3", "Conduction band DOS at 300K"),
 ("Si",     "NV300",           1.83e19,        "#/cm^3", "Valence band DOS at 300K"),
@@ -35,7 +35,7 @@ Eta_V = "(EV - EF)/(k * T)"
 
 
 #### EG MODEL from Wikipedia
-EG(T) = EG(0) - (EG_ALPHA * T^2)/(T + EG_BETA)
-ni(T) = (NC * NV)^0.5 * exp(-EG/(2 * k * T))
+# EG(T) = EG(0) - (EG_ALPHA * T^2)/(T + EG_BETA)
+# ni(T) = (NC * NV)^0.5 * exp(-EG/(2 * k * T))
 
 
