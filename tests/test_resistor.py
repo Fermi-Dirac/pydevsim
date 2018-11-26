@@ -1,9 +1,8 @@
 import unittest
 
-
-from devsim.mesh import Mesh
-from devsim.device import Device
-from devsim import materials
+from pydevsim import materials
+from pydevsim.device import Device
+from pydevsim.mesh import Mesh
 
 
 class ResistorTestCase(unittest.TestCase):

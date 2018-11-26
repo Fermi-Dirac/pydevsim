@@ -40,7 +40,7 @@ class BeerLambertModel(object):
             )
 
     def solve(self, *args, **kwargs):
-        for region in device.mesh.regions:
-            node_solution(name)
+        for region in self.device.mesh.regions:
+            node_solution(self.name)
             node_solution(name=self.name, device=self.device.name, region=region)
             edge_from_node_model(node_model=self.name, device=self.device.name, region=region)

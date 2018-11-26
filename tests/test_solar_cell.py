@@ -1,8 +1,7 @@
 import unittest
 
-from devsim.mesh import Mesh
-from devsim.device import Device
-from devsim import materials
+from pydevsim import materials
+from pydevsim.mesh import Mesh
 
 
 class SolarCellTestCase(unittest.TestCase):

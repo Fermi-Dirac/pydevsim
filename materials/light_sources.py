@@ -1,7 +1,7 @@
 from os.path import join as joinpath
 import csv
 from numpy import interp as interpolate
-from devsim import DS_DATADIR
+from pydevsim import DS_DATADIR
 
 
 class AM0(object):

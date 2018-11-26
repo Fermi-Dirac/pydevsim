@@ -1,16 +1,21 @@
 import uuid
 import logging
 
-from ds import *
-from devsim import PhysicalConstants, AmbientConditions
+# from ds import *
+from pydevsim import setup_logger
+from ds import edge_from_node_model, equation, node_model,get_node_model_list,get_edge_model_list,edge_model
+from ds import contact_node_model, get_contact_current, contact_equation, set_node_values, get_contact_list, node_solution
+from ds import create_device, set_parameter, solve, write_devices, get_parameter
+from pydevsim import PhysicalConstants, AmbientConditions
+from .constants import ECE_NAME, HCE_NAME, CELEC_MODEL, CHOLE_MODEL# ece_name, hce_name, celec_model, chole_model
 
 log = logging.getLogger("Device")
 
 #TODO: move this to the appropiate place
 contactcharge_node="contactcharge_node"
 contactcharge_edge="contactcharge_edge"
-ece_name="ElectronContinuityEquation"
-hce_name="HoleContinuityEquation"
+ece_name=ECE_NAME# "ElectronContinuityEquation"
+hce_name=HCE_NAME#"HoleContinuityEquation"
 celec_model = "(1e-10 + 0.5*abs(NetDoping+(NetDoping^2 + 4 * n_i^2)^(0.5)))"
 chole_model = "(1e-10 + 0.5*abs(-NetDoping+(NetDoping^2 + 4 * n_i^2)^(0.5)))"
 

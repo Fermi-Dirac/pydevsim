@@ -1,9 +1,8 @@
 import unittest
 
-
-from devsim .mesh import Mesh
-from devsim.device import Device
-from devsim import materials
+from pydevsim import materials
+from pydevsim.device import Device
+from pydevsim.mesh import Mesh
 
 
 class BeerLambertModelTestCase(unittest.TestCase):
@@ -34,8 +33,8 @@ class BeerLambertModelTestCase(unittest.TestCase):
 
         # Stablish conditions (light)
         # Setup the model
-        from devsim.light_sources import AM0
-        from devsim.models import BeerLambertModel
+        from pydevsim.light_sources import AM0
+        from pydevsim.models import BeerLambertModel
         mdl = BeerLambertModel(sample_device, AM0())
         sample_device.setup_model(mdl)
         # Solve

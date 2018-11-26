@@ -1,4 +1,4 @@
-from devsim import PhysicalConstants
+from pydevsim import PhysicalConstants
 from .base import Material, MaterialProperty
 
 
