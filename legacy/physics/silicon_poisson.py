@@ -12,8 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from simple_dd import *
+from .simple_dd import *
 from ds import *
+from .silicon_poisson import *
 #TODO: make this a class so that paramters can be changed
 contactcharge_node="contactcharge_node"
 contactcharge_edge="contactcharge_edge"

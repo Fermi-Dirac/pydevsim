@@ -3,7 +3,7 @@ from adaptusim import setup_logger
 logger = setup_logger(__name__)
 
 
-def create_solution(device, region, name):
+def create_solution(device=None, regions=None, name=None):
     """
     Creates a variable to be solved during the simulation
     Also creates the edge models for the node solution so you have access on edges and nodes
@@ -12,8 +12,19 @@ def create_solution(device, region, name):
     :param name:
     :return:
     """
-    ds.node_solution(name=name, device=device, region=region)
-    ds.edge_from_node_model(node_model=name, device=device, region=region)
+    if device is None:
+        device = ds.get_device_list()[0]
+    if regions is None:
+        regions = ds.get_region_list(device=device)
+    if type(regions) is str:
+        regions = [regions]
+    try:
+        regions[0]
+    except IndexError:
+        regions = [regions]
+    for region in regions:
+        ds.node_solution(name=name, device=device, region=region)
+        ds.edge_from_node_model(node_model=name, device=device, region=region)
 
 
 def create_node_and_derivatives(device, region, model, equation, deriv_list=None):
@@ -37,7 +48,17 @@ def create_node_and_derivatives(device, region, model, equation, deriv_list=None
 
 def create_edge_and_derivatives(device, region, model, equation, deriv_list=None):
     """
-    Creates derivatives with respect to all the variables of the equation named model in the device and region
+    Creates derivatives with respect to all the variables of the equation named model in the device and region.
+
+    These equations can ONLY contain the following things:
+    Constants like 1E-2
+    Parameters that are set in that device or region
+    EdgeModel strings that are set in that area
+
+    These equations CANNOT use
+    NodeModel strings.
+
+    If you want NodeModel strings, you need to call ds.edge_model_from_node
     :param device:
     :param region:
     :param model:
@@ -57,6 +78,9 @@ def create_edge_and_derivatives(device, region, model, equation, deriv_list=None
 
 
 def set_parameters(device=None, region=None, **kwargs):
+    # TODO check if set_parameters works wihtout setting a device? Docs says it does...
+    # if device is None:
+    #     device = ds.get_device_list()[0]
     if device is None and region is None:
         for name, value in kwargs.items():
             ds.set_parameter(name=name, value=value)
