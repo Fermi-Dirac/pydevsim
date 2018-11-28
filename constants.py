@@ -1,7 +1,7 @@
 from ds import set_parameter
 from os.path import abspath, join, dirname
-# from adaptusim import setup_logger
-# logger = setup_logger(__name__)
+from adaptusim import setup_logger
+logger = setup_logger(__name__)
 # Fundamental Constants
 # Permitivity of free space
 eps_0  = 8.854187817e-14 # F/cm^2
@@ -20,7 +20,7 @@ Vt = kb*T/q
 # Set them globally
 for name in ['eps_0', 'q', 'kb', 'planck_h', 'T', 'kT', 'Vt']:
     value = eval(name)
-    # logger.info(f"Now setting global variable {name} to {value:.3g}")
+    logger.info(f"Now setting global variable {name} to {value:.3g}")
     set_parameter(name=name, value=value)
 
 DS_DATADIR = abspath(join(dirname(__file__), 'data'))

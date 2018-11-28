@@ -29,11 +29,11 @@ def setup_logger(name, loglevel=None):
 
 
 # Flatten our function calls from core module
-# from .core import *
-# from .constants import *
-# from . import plot
-# from .plot import *
-# from . import core
+from .core import *
+from .constants import *
+from . import plot
+from .plot import *
+from . import core
 
 # TODO Legacy
 class ParameterEnum(object):

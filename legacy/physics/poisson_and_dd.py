@@ -3,7 +3,7 @@ from adaptusim.legacy import create_node_and_derivatives, create_edge_and_deriva
 from adaptusim.core import get_ds_status
 from adaptusim import setup_logger
 logger = setup_logger(__name__)
-
+logger.info("Importing poisson and dd")
 ### List of names of things ###
 
 # Fundamental
@@ -50,9 +50,7 @@ Nv = 'Nv' #'Nvalence_band'
 
 def setup_physical_constants(device=None, region=None, q=1.6E-19, k=1.38065E-23, eps_0=8.85E-14, T=300, **kwargs):
     logger.debug("Setting physical constants")
-    print(logger.handlers)
     set_parameters(device=device, region=region, Vt=k*T/q, Vt_inv=q/(k*T))
-    logger.debug(str(locals()))
     return set_parameters(**locals())
 
 
@@ -76,18 +74,18 @@ def setup_poisson(device, region, variable_update='log_damp', **kwargs):
     logger.debug("Setting up Poisson Equation")
     # These are variables that are to be solved during the simulation
     # for sol_variable in [hole_density, electron_density, potential, qfn, qfp]:
-    for sol_variable in [potential, qfn, qfp]:
+    for sol_variable in [potential, electron_density, hole_density]:
         create_solution(device, region, sol_variable)
     electron_density_eq = f'{intrinsic_charge}*exp(({potential}-{qfn})*{Vt}_inv)'
     hole_density_eq = f'{intrinsic_charge}*exp( ({qfp}-{potential})*{Vt}_inv)'
-    # ds.equation(device, region, name='HoleQFL', variable_name=qfn,
-    #             node_model=hole_density, edge_model=)
     total_charge_eq = f'-{q}*kahan4({hole_density}, -{electron_density}, {p_doping}, -{n_doping})'
-    ef_eq = f'{bandgap}/2-{affinity}'
     int_chg_eq = '1e11'# f'({Nc}*{Nv})^(1/2)*exp(-{bandgap}/(2*k*T))'
-    for name, eq in zip([electron_density, hole_density, total_charge, Ef, intrinsic_charge],
-                        [electron_density_eq, hole_density_eq, total_charge_eq, ef_eq, int_chg_eq]):
+    # Order matters!
+    for name, eq in zip([intrinsic_charge, electron_density, hole_density, total_charge, ],
+                        [int_chg_eq, electron_density_eq, hole_density_eq, total_charge_eq,]):
         create_node_and_derivatives(device, region, name, eq, [potential])
+    ds.edge_from_node_model(device=device, region=region,node_model=electron_density)
+    ds.edge_from_node_model(device=device, region=region, node_model=hole_density)
 
     e_field_eq = f"({potential}@n0-{potential}@n1)*EdgeInverseLength"
     d_field_eq = f'{e_field}*{permittivity}*{eps_0}'
@@ -95,8 +93,9 @@ def setup_poisson(device, region, variable_update='log_damp', **kwargs):
         create_edge_and_derivatives(device, region, name, eq, [potential])
 
     # Lastly, setup the equation to solve for 'potential'
-    ds.set_node_values(device=device, region=region, name=qfp, init_from=Ef)
-    ds.set_node_values(device=device, region=region, name=qfn, init_from=Ef)
+    # TODO check initial values
+    ds.set_node_values(device=device, region=region, name=electron_density, init_from=intrinsic_charge)
+    ds.set_node_values(device=device, region=region, name=hole_density, init_from=intrinsic_charge)
     ds.equation(device=device, region=region, name='PoissonEq', variable_name=potential,
                 node_model=total_charge, edge_model=d_field, variable_update=variable_update)
     # ds.set_node_values(device=device, region=region, name=potential, init_from='0')
@@ -112,9 +111,9 @@ def setup_continuity(device, region, **kwargs):
     """
     logger.debug("Setting up continuity equation")
     # These are variables that are to be solved during the simulation
-    # TODO check if these already exist?
-    for sol_variable in [hole_density, electron_density, potential]:
-        create_solution(device, region, sol_variable)
+    # # TODO check if these already exist?
+    # for sol_variable in [hole_density, electron_density, potential]:
+    #     create_solution(device, region, sol_variable)
 
     # These are variables that exist per each node and may be spatially dependant
     # Generation rate
@@ -142,14 +141,14 @@ def setup_continuity(device, region, **kwargs):
     # electron continuity
     e_current_eq = f"2*{q}*{Vt}*mobility_n*EdgeInverseLength*{electron_density}@n0*exp({Vt}_inv*({potential}@n0+{potential}@n1-{qfn}@n0-{qfn}@n1)/2)*sinh_qfn*{zcsch_pot}"
     create_edge_and_derivatives(device, region, e_current_name, e_current_eq, [electron_density, hole_density,potential])
-    ds.equation(device=device, region=region, name='ECE', variable_name=electron_density,
+    ds.equation(device=device, region=region, name='ECE', variable_name=qfn,
                 time_node_model=electron_density,
                 edge_model=e_current_name, node_model=e_gen)
 
     # hole continuity
     h_current_eq = f"2*{q}*{Vt}*mobility_p*EdgeInverseLength*{hole_density}@n0*exp({Vt}_inv*(-{potential}@n0-{potential}@n1+{qfp}@n0+{qfp}@n1)/2)*sinh_qfn*{zcsch_pot}"
     create_edge_and_derivatives(device, region, h_current_name, h_current_eq, [electron_density, hole_density, potential])
-    ds.equation(device=device, region=region, name='HCE', variable_name=hole_density,
+    ds.equation(device=device, region=region, name='HCE', variable_name=qfp,
                 time_node_model=hole_density,
                 edge_model=h_current_name, node_model=h_gen)
     # ds.equation(device=device, region=region, name=, variable_name=electron_density,

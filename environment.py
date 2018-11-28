@@ -1,7 +1,6 @@
 from ds import set_parameter
-from pydevsim import setup_logger
+from adaptusim import setup_logger
 logger = setup_logger(__name__)
-
 
 class Environment(object):
     """
