@@ -121,3 +121,20 @@ def get_ds_status(short=True):
             c_eqs = ds.get_contact_equation_list(device=device, contact=contact)
             for ceq in c_eqs:
                 print("\t\tContact Equation : " + ceq)
+
+
+def get_voltage_current(device=None, contact=None, ece_name="ElectronContinuityEquation",
+                        hce_name="HoleContinuityEquation"):
+    '''
+       Return voltage and current for the device
+    '''
+    if device is None:
+        device = ds.get_device_list()[0]
+        logger.warning(f"No device specified! Assuming '{device}'")
+    if contact is None:
+        contact = ds.get_contact_list(device)[0]
+    electron_current = ds.get_contact_current(device=device, contact=contact, equation=ece_name)
+    hole_current = ds.get_contact_current(device=device, contact=contact, equation=hce_name)
+    total_current = electron_current + hole_current
+    voltage = ds.get_parameter(device=device, name=f"{contact}_bias")
+    return voltage, total_current
