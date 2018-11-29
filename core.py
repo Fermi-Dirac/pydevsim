@@ -18,11 +18,11 @@ def get_ds_status():
             n_models = ds.get_node_model_list(device=device, region=region)
             for node_model in n_models:
                 nmvals = ds.get_node_model_values(device=device, region=region, name=node_model)
-                print(f"\t\t Node Model '{node_model}' = {nmvals!s}")
+                print(f"\t\tNode Model '{node_model}' = {nmvals!s}")
             e_models = ds.get_edge_model_list(device=device, region=region)
             for edge_model in e_models:
                 emvals = ds.get_edge_model_values(device=device, region=region, name=edge_model)
-                print(f"\t\t Edge Model '{edge_model}' = {emvals!s}")
+                print(f"\t\tEdge Model '{edge_model}' = {emvals!s}")
         contacts = ds.get_contact_list(device=device)
         for contact in contacts:
             print("\tContact : " + contact)

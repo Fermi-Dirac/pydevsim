@@ -76,14 +76,12 @@ def setup_poisson(device, region, variable_update='log_damp', **kwargs):
     # for sol_variable in [hole_density, electron_density, potential, qfn, qfp]:
     for sol_variable in [potential, electron_density, hole_density]:
         create_solution(device, region, sol_variable)
-    electron_density_eq = f'{intrinsic_charge}*exp(({potential}-{qfn})*{Vt}_inv)'
-    hole_density_eq = f'{intrinsic_charge}*exp( ({qfp}-{potential})*{Vt}_inv)'
-    total_charge_eq = f'-{q}*kahan4({hole_density}, -{electron_density}, {p_doping}, -{n_doping})'
+    total_charge_eq = f'kahan3({hole_density},-{electron_density},{p_doping})' #f'{hole_density}-{electron_density}+{p_doping}-{n_doping}' #f'-{q}*kahan4({hole_density}, -{electron_density}, {p_doping}, -{n_doping})'
     int_chg_eq = '1e11'# f'({Nc}*{Nv})^(1/2)*exp(-{bandgap}/(2*k*T))'
     # Order matters!
-    for name, eq in zip([intrinsic_charge, electron_density, hole_density, total_charge, ],
-                        [int_chg_eq, electron_density_eq, hole_density_eq, total_charge_eq,]):
-        create_node_and_derivatives(device, region, name, eq, [potential])
+    for name, eq in zip([intrinsic_charge,  total_charge, ],
+                        [int_chg_eq, total_charge_eq,]):
+        create_node_and_derivatives(device, region, name, eq, [potential, electron_density, hole_density])
     ds.edge_from_node_model(device=device, region=region,node_model=electron_density)
     ds.edge_from_node_model(device=device, region=region, node_model=hole_density)
 
@@ -117,47 +115,41 @@ def setup_continuity(device, region, **kwargs):
 
     # These are variables that exist per each node and may be spatially dependant
     # Generation rate
-    U_SRH_eq = f'{q}*({electron_density}*{hole_density} - {intrinsic_charge}^2)/(tau_p*({electron_density}+{intrinsic_charge}) + tau_n*({hole_density}+{intrinsic_charge}))'
-    for name, eq in zip([U_SRH, e_gen, h_gen], [U_SRH_eq, '-'+U_SRH_eq, U_SRH_eq]) :
-        # TODO can we move SRH to its own function/method/module? yes, yes we can.
-        create_node_and_derivatives(device, region, name, eq, [electron_density, hole_density])
+    # U_SRH_eq = f'{q}*({electron_density}*{hole_density} - {intrinsic_charge}^2)/(tau_p*({electron_density}+{intrinsic_charge}) + tau_n*({hole_density}+{intrinsic_charge}))'
+    # U_SRH_eq = f'({electron_density}*{hole_density} - {intrinsic_charge}^2)/(tau_p*({electron_density}+{intrinsic_charge}) + tau_n*({hole_density}+{intrinsic_charge}))'
+    # for name, eq in zip([U_SRH, e_gen, h_gen], [U_SRH_eq, f'-{q}*{U_SRH_eq}', f"{q}*{U_SRH_eq}"]) :
+    #     # TODO can we move SRH to its own function/method/module? yes, yes we can.
+    #     create_node_and_derivatives(device, region, name, eq, [electron_density, hole_density])
 
     # Bernouli setup
     # ds.node_model(device=device, region=region, name='dp', equation=f'{delta_pot}*{Vt}_inv*0.5')
     # Begin finite difs of phi
     # e_current_eq = f"{ q}*mobility_n*EdgeInverseLength*k*T/{q}*kahan3({electron_density}@n1*Bern01, {electron_density}@n1*{delta_pot}, -{electron_density}@n0*Bern01)"
 
-    for name, eq in [(delta_pot, f"({potential}@n0 - {potential}@n1)"),
-                     ("dp", f'{delta_pot}*{Vt}_inv*0.5+1e-16'),  # Machine epsilon here because devsim does not do short-circuit evaluation
-                     (f"qfn_norm", f"{Vt}_inv*({qfn}@n1-{qfn}@n0)"),
-                     (f"qfp_norm", f"{Vt}_inv*({qfp}@n1-{qfp}@n0)"),
-                     ("sinh_qfn",f"(exp(qfn_norm)-exp(-qfn_norm))/2"),
-                     ("sinh_qfp", f"(exp(qfp_norm)-exp(-qfp_norm))/2"),
-                     # (zcsch_pot, f"ifelse(dp<-1E-4,2*dp*exp(dp)/(exp(2*dp)-1), ifelse(dp>1E-4, 2*dp*exp(-dp)/(1-exp(-2*dp)),1+dp*dp/6+7*dp^4/360))"), # f"{Vt}_inv*{delta_pot}/2*csch({Vt}_inv*{delta_pot}/2)"),
-                     (zcsch_pot, f"ifelse(dp<-1E-4, 2*dp*exp(dp)/(exp(2*dp)-1), ifelse(dp>1E-4, 2*dp*exp(-dp)/(1-exp(-2*dp)),1+dp*dp/6+7*dp^4/360))"),
-                     # f"{Vt}_inv*{delta_pot}/2*csch({Vt}_inv*{delta_pot}/2)"),
-                     ]:
+    for name, eq in [(f'{delta_pot}', f"q/(k*T)*({potential}@n1 - {potential}@n0)"),
+                     (f'Bern01', f'B({delta_pot})'),
+                     (f'Bern00', f'B(-{delta_pot})'),
+                     (f'{delta_pot}:{potential}@n0', f'-q/(k*T)'),
+                     (f'{delta_pot}:{potential}@n1', f'-{delta_pot}:{potential}@n0'),
+                     (f'Bern01:{potential}@n0', f'dBdx({delta_pot})*{delta_pot}:{potential}@n0'),
+                     (f'Bern01:{potential}@n1', f'-Bern01:{potential}@n0'),
+                     (f'Bern00:{potential}@n0', f'-dBdx(-{delta_pot})*{delta_pot}:{potential}@n0'),
+                     (f'Bern00:{potential}@n1', f'-Bern00:{potential}@n0')]:
         ds.edge_model(device=device, region=region, name=name, equation=eq)
+
     # electron continuity
-    e_current_eq = f"2*{q}*{Vt}*mobility_n*EdgeInverseLength*{electron_density}@n0*exp({Vt}_inv*({potential}@n0+{potential}@n1-{qfn}@n0-{qfn}@n1)/2)*sinh_qfn*{zcsch_pot}"
-    create_edge_and_derivatives(device, region, e_current_name, e_current_eq, [electron_density, hole_density,potential])
-    ds.equation(device=device, region=region, name='ECE', variable_name=qfn,
+    e_current_eq = f"-mobility_n*k*T*EdgeInverseLength*(Bern00*{electron_density}@n0 - Bern01*{electron_density}@n1)"
+    create_edge_and_derivatives(device, region, e_current_name, e_current_eq, [electron_density, hole_density, potential])
+    ds.equation(device=device, region=region, name='ECE', variable_name=electron_density,
                 time_node_model=electron_density,
                 edge_model=e_current_name, node_model=e_gen)
 
     # hole continuity
-    h_current_eq = f"2*{q}*{Vt}*mobility_p*EdgeInverseLength*{hole_density}@n0*exp({Vt}_inv*(-{potential}@n0-{potential}@n1+{qfp}@n0+{qfp}@n1)/2)*sinh_qfn*{zcsch_pot}"
+    h_current_eq =f"mobility_p*k*T*EdgeInverseLength*(-Bern00*{hole_density}@n1 + Bern01*{hole_density}@n0)"
     create_edge_and_derivatives(device, region, h_current_name, h_current_eq, [electron_density, hole_density, potential])
-    ds.equation(device=device, region=region, name='HCE', variable_name=qfp,
+    ds.equation(device=device, region=region, name='HCE', variable_name=hole_density,
                 time_node_model=hole_density,
                 edge_model=h_current_name, node_model=h_gen)
-    # ds.equation(device=device, region=region, name=, variable_name=electron_density,
-    #             edge_model=e_current_eq, node_model=e_gen)
-
-
-    # ds.equation(device=device, region=region, name=, variable_name=hole_density,
-    #             edge_model=, node_model=h_gen)
-    # These are edge variables between nodes
 
 
 if __name__ == '__main__':
