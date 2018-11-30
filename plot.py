@@ -16,20 +16,22 @@ def plot_charge(device=None,regions=None, charge_names=None):
     if charge_names is None:
         charge_names = ("Electrons", "Holes", "Donors", "Acceptors")
     plt.figure()
+    labels = []
     for var_name in charge_names:
         total_x = np.array([])
         total_y = []
         for region in regions:
+            labels.append(f"{var_name} in {region}")
             x = np.array(ds.get_node_model_values(device=device, region=region, name="x"))
             # print(var_name, min(x), max(x), min(x)*1e4, max(x)*1e4)
             total_x = np.append(total_x, x)
             y=ds.get_node_model_values(device=device, region=region, name=var_name)
             total_y.extend(y)
         # plt.axis([min(x), max(x), ymin, ymax])
-        plt.semilogy(np.array(total_x)*1e4, total_y)
+            plt.semilogy(x*1e4, y)
     plt.xlabel('x (um)')
     plt.ylabel('Density (#/cm^3)')
-    plt.legend(charge_names)
+    plt.legend(labels)
     plt.title('Charge Density')
     # plt.savefig("diode_1d_density.png")
     # plt.show()
@@ -72,8 +74,11 @@ def plot_potential(device=None, regions=None, potential='Potential'):
         x = np.array(ds.get_node_model_values(device=device, region=region, name="x"))
         # print(var_name, min(x), max(x), min(x)*1e4, max(x)*1e4)
         total_x = np.append(total_x, x)
-        pots = np.append(pots, ds.get_node_model_values(device=device, region=region, name=potential))
-    plt.plot(total_x*1e4, pots)
+        new_pots = ds.get_node_model_values(device=device, region=region, name=potential)
+        pots = np.append(pots, new_pots)
+        plt.plot(x*1e4, new_pots, marker='o', linestyle='-', markersize=3)
+    plt.legend(regions)
+    # plt.plot(total_x*1e4, pots)
     plt.xlabel('X (um)')
     plt.ylabel('Potential (V)')
     plt.title(potential)

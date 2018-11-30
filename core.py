@@ -1,6 +1,6 @@
 import ds
 
-def get_ds_status():
+def get_ds_status(short=True):
     """
     Prints the status of the current devsim setup and all variables, solutions, node models and edge models
     :return:
@@ -18,11 +18,13 @@ def get_ds_status():
             n_models = ds.get_node_model_list(device=device, region=region)
             for node_model in n_models:
                 nmvals = ds.get_node_model_values(device=device, region=region, name=node_model)
-                print(f"\t\tNode Model '{node_model}' = {nmvals!s}")
+                nmstr = ','.join([f'{val:.3g}' for val in nmvals])
+                print(f"\t\tNode Model '{node_model}' = {nmstr!s}")
             e_models = ds.get_edge_model_list(device=device, region=region)
             for edge_model in e_models:
                 emvals = ds.get_edge_model_values(device=device, region=region, name=edge_model)
-                print(f"\t\tEdge Model '{edge_model}' = {emvals!s}")
+                emstr = ','.join([f'{val:.3g}' for val in emvals])
+                print(f"\t\tEdge Model '{edge_model}' = {emstr}")
         contacts = ds.get_contact_list(device=device)
         for contact in contacts:
             print("\tContact : " + contact)
