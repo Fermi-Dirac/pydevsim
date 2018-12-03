@@ -15,7 +15,7 @@ def plot_charge(device=None,regions=None, charge_names=None):
         regions = ds.get_region_list(device=device)
     if charge_names is None:
         charge_names = ("Electrons", "Holes", "Donors", "Acceptors")
-    plt.figure()
+    plt.figure(figsize=(6, 2.7))
     labels = []
     for var_name in charge_names:
         total_x = np.array([])
@@ -82,3 +82,21 @@ def plot_potential(device=None, regions=None, potential='Potential'):
     plt.xlabel('X (um)')
     plt.ylabel('Potential (V)')
     plt.title(potential)
+
+def plot_band_diagram(device=None, regions=None, ec_name='EC', ev_name='EV'):
+    if device is None:
+        device = ds.get_device_list()[0]
+    if regions is None:
+        regions = ds.get_region_list(device=device)
+    plt.figure(figsize=(6, 2.7))
+    labels = []
+    for region in regions:
+        x = np.array(ds.get_node_model_values(device=device, region=region, name="x"))
+        for band in [ec_name, ev_name]:
+            band_edge = ds.get_node_model_values(device=device, region=region, name=band)
+            plt.plot(x * 1e4, band_edge, marker='o', linestyle='-', markersize=3)
+            labels.append(f'{band} in {region}')
+    plt.legend(labels)
+    plt.xlabel('x (µm)')
+    plt.ylabel('Energy (eV)')
+    plt.title('Band Diagram')

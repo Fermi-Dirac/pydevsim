@@ -125,7 +125,7 @@ def CreateDensityOfStates(device, region, variables):
     eq = (
         ('NC', 'NC300 * (T/300)^1.5', ('T',)),
         ('NV', 'NV300 * (T/300)^1.5', ('T',)),
-        ('NTOT', 'Donors + Acceptors', ()),
+        ('NTOT', 'abs(Acceptors-Donors)', ()),
         # Band Gap Narrowing
         ('DEG', '0', ()),
         # ('DEG', 'V0.BGN * (log(NTOT/N0.BGN) + ((log(NTOT/N0.BGN)^2 + CON.BGN)^(0.5)))', ()),
