@@ -31,8 +31,8 @@ def p_n_junction(meshname='default_mesh', region1='p_region', region2='n_region'
     thickness2 = thickness2 * 1E-4
     spacing = spacing * 1E-4  # convert nm to cm
     ds.create_1d_mesh(mesh=meshname)
-    ds.add_1d_mesh_line(mesh=meshname, pos=0, ps=spacing, tag=top)
-    ds.add_1d_mesh_line(mesh=meshname, pos=thickness1, ps=spacing/20, tag=interface)
+    ds.add_1d_mesh_line(mesh=meshname, pos=0, ps=spacing/10, tag=top)
+    ds.add_1d_mesh_line(mesh=meshname, pos=thickness1, ps=spacing/50, tag=interface)
     ds.add_1d_region(mesh=meshname, tag1=top, tag2=interface, region=region1, material='Si')
     ds.add_1d_mesh_line(mesh=meshname, pos=thickness1+thickness2, ps=spacing, tag=bottom)
     ds.add_1d_region(mesh=meshname, tag1=interface, tag2=bottom, region=region2, material='InAs')

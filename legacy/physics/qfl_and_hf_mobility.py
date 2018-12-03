@@ -13,6 +13,7 @@
 # limitations under the License.
 
 from ds import *
+import ds
 from .model_create import *
 from adaptusim import setup_logger
 
@@ -32,19 +33,24 @@ def SetUniversalParameters(device, region):
 def SetSiliconParameters(device, region, **kwargs):
     '''
       Sets Silicon device parameters on the specified region.
+
+      These are 'parameters' and thus available on Edges and Nodes
+      These should not be dependant on any node or edge terms and are assumed to be 'constant' during simulation.
     '''
 
     SetUniversalParameters(device, region)
 
     ##D. B. M. Klaassen, J. W. Slotboom, and H. C. de Graaff, "Unified apparent bandgap narrowing in n- and p-type Silicon," Solid-State Electronics, vol. 35, no. 2, pp. 125-29, 1992.
-    par = {
+    default_par = {
         'Permittivity': 11.1 * get_parameter(device=device, region=region, name='Permittivity_0'),
-        'NC300': 2.8e19,  # '1/cm^3'
-        'NV300': 3.1e19,  # '1/cm^3'
-        'EG300': 1.12,  # 'eV'
-        'EGALPH': 2.73e-4,  # 'eV/K'
-        'EGBETA': 0,  # 'K'
-        'Affinity': 4.05,  # 'K'
+        'NC300': 2.8e19,  # '1/cm^3'  density of conduction band states at 300K
+        'NV300': 3.1e19,  # '1/cm^3'  density of valence band states at 300K
+        'EG300': 1.12,  # 'eV' bandgap at 300K
+        'EGALPH': 2.73e-4,  # 'eV/K' bandgap bowing parameter with temperature
+        'EGBETA': 0,  # 'K'  other bandgap bowing parameter
+        'Affinity': 4.05,  # 'K' electron affinity
+        'vtherm_e': 1e7,  # cm/s thermal velocity of electrons
+        'vtherm_h': 1e7,  # cm/s thermal velocity of holes
         # Canali model
         'BETAN0': 2.57e-2,  # '1'
         'BETANE': 0.66,  # '1'
@@ -72,19 +78,26 @@ def SetSiliconParameters(device, region, **kwargs):
         'ALPHA0P': 0.88,
         'ALPHAEP': -0.146,
         # SRH
-        "taun": 1e-5,
-        "taup": 1e-5,
-        "n1": 1e10,
-        "p1": 1e10,
+        "taun": 1e-5,  # SRH recombination lifetime of electrons
+        "taup": 1e-5,  # SRH recombination lifetime of holes
+        "n1": 1e10,   # intrinsic carrier concentration of electrons only
+        "p1": 1e10,  # intrinsic carrier concentration of holes only
         # TEMP
-        "T": 300
+        "T": 300  # K Absolute temperature
     }
-    for key, value in par.items():
-        if key in kwargs:
-            par[key] = kwargs[key]
+    for key, value in kwargs.items():
+        if key in default_par:
+            default_par[key] = kwargs[key]
+        else:
+            logger.warning(f"Could not find supplied key '{key}' in list of available parameters.")
+    # for key, value in default_par.items():
+    #     if key in kwargs:
+    #         default_par[key] = kwargs[key]
+    #     else:
+    #         logger.warning(f"Could not find '{key}' ")
 
-    for k, v in list(par.items()):
-        set_parameter(device=device, region=region, name=k, value=v)
+    for key, value in default_par.items():
+        set_parameter(device=device, region=region, name=key, value=value)
 
 
 def CreateQuasiFermiLevels(device, region, electron_model='Electrons', hole_model='Holes', variables=('Potential', 'Holes', 'Electrons')):
@@ -106,13 +119,13 @@ def CreateQuasiFermiLevels(device, region, electron_model='Electrons', hole_mode
 
 def CreateDensityOfStates(device, region, variables):
     '''
-      Set up models for density of states.
-      Neglects Bandgap narrowing.
+      Set up models for density of states as a function of temperature
+      Neglects Bandgap narrowing sort of?
     '''
     eq = (
         ('NC', 'NC300 * (T/300)^1.5', ('T',)),
         ('NV', 'NV300 * (T/300)^1.5', ('T',)),
-        ('NTOT', 'Donors + Acceptors', ()),
+        ('NTOT', 'abs(Acceptors-Donors)', ()),
         # Band Gap Narrowing
         ('DEG', '0', ()),
         # ('DEG', 'V0.BGN * (log(NTOT/N0.BGN) + ((log(NTOT/N0.BGN)^2 + CON.BGN)^(0.5)))', ()),
@@ -500,3 +513,47 @@ def CreateHFMobility(device, region, mu_n, mu_p, Jn, Jp):
         'Jn': 'Jn',
         'Jp': 'Jp',
     }
+
+
+def CreateSiliconOxideInterface(device, interface, potential_name='Potential', pot_eq_name="PotentialEquation"):
+    '''
+      continuous potential at interface
+    '''
+    model_name = CreateContinuousInterfaceModel(device, interface, potential_name)
+    interface_equation(device=device, interface=interface, name=pot_eq_name, variable_name=potential_name,
+                       interface_model=model_name, type="continuous")
+
+
+##TODO: similar model for silicon/silicon interface
+## should use quasi-fermi potential
+def CreateSiliconSiliconInterface(device, interface, electrons_name='Electrons', holes_name='Holes',
+                                  ece_name='ElectronContinuityEquation', hce_name='HoleContinuityEquation'):
+    '''
+      Enforces potential, electron, and hole continuity across the interface
+    '''
+    CreateSiliconOxideInterface(device, interface)
+    ename = CreateContinuousInterfaceModel(device, interface, electrons_name)
+    ds.interface_equation(device=device, interface=interface, name=ece_name, variable_name=electrons_name,
+                       interface_model=ename, type="continuous")
+    hname = CreateContinuousInterfaceModel(device, interface, holes_name)
+    ds.interface_equation(device=device, interface=interface, name=hce_name, variable_name=holes_name,
+                       interface_model=hname, type="continuous")
+
+def create_thermionic_interface(interface_tag, device=None, e_name='Electrons', h_name='Holes', aff_name='Affinity',
+                                vtherm_e='vtherm_e', vtherm_h='vtherm_h', eg_name='EG',
+                                ece_name='ElectronContinuityEquation', hce_name='HoleContinuityEquation'):
+    if device is None:
+        device = ds.get_device_list()[0]
+    CreateSiliconOxideInterface(device, interface_tag) # Makes the potential continuous across the border?
+    delta_EC = f'({aff_name}@r1-{aff_name}@r0)'
+    Jn1to2 = f'{vtherm_e}@r0*{e_name}@r0*exp(-{delta_EC}/(k*T)*(step({delta_EC})))'
+    Jn2to1 = f'{vtherm_e}@r1*{e_name}@r1*exp(-{delta_EC}/(k*T)*(1-step({delta_EC})))'
+    Jn_int = Jn1to2 + " - " + Jn2to1
+    delta_EV = f'{eg_name}@r1-{eg_name}@r0+{aff_name}@r1-{aff_name}@r0'
+    Jp1to2 = f'{vtherm_h}@r0*{h_name}@r0*exp(-{delta_EV}/(k*T)*(1-step({delta_EV})))'
+    Jp2to1 = f'{vtherm_h}@r1*{h_name}@r1*exp(-{delta_EV}/(k*T)*(step({delta_EV})))'
+    Jp_int = Jp1to2 + " - " + Jp2to1
+    for name, eq, current_eq in [('thermionic_n', Jn_int, ece_name), ('thermionic_p', Jp_int, hce_name)]:
+        ds.interface_model(device=device, interface=interface_tag, name=name, equation=eq)
+        ds.interface_equation(device=device, interface=interface_tag, name=current_eq, variable_name=e_name,
+                              interface_model=name, type='continuous')

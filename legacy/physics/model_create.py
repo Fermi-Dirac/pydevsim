@@ -118,12 +118,19 @@ def CreateInterfaceModel(device, interface, model, expression):
 #  CreateInterfaceModel(device, interface, "{m}:{v}".format(m=model, v=variable), "simplify(diff({e}, {v}))".format(e=expression, v=variable))
 
 def CreateContinuousInterfaceModel(device, interface, variable):
+    """
+    Creates an interface model that is continuous on both sides with respect to -variable-
+    :param device:
+    :param interface:
+    :param variable:
+    :return:
+    """
     mname = "continuous{0}".format(variable)
     meq = "{0}@r0 - {0}@r1".format(variable)
     mname0 = "{0}:{1}@r0".format(mname, variable)
     mname1 = "{0}:{1}@r1".format(mname, variable)
     CreateInterfaceModel(device, interface, mname, meq)
-    CreateInterfaceModel(device, interface, mname0, "1")
+    CreateInterfaceModel(device, interface, mname0, "1")  # These are derivatives
     CreateInterfaceModel(device, interface, mname1, "-1")
     return mname
 
